@@ -1,0 +1,149 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="map_3x4_Lcorners">
+
+    <!-- Boden + Sonne -->
+    <include><uri>model://ground_plane</uri></include>
+    <include><uri>model://sun</uri></include>
+
+    <!-- Parameter:
+         Raum: x in [-1.5,1.5], y in [-2,2]
+         L-Wände: Länge L=1.0 m pro Schenkel, Dicke t=0.05 m, Höhe h=0.5 m
+         Würfel: 0.5 m Kantenlänge, positioniert oben-links (nicht kollidierend)
+    -->
+
+    <!-- --- Oben links (Top-Left) --- -->
+    <model name="tl_horizontal">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+          <material><ambient>0.8 0.8 0.8 1</ambient></material>
+        </visual>
+        <!-- x = -1.0 (mittig über 1m), y = 2 - t/2, z = h/2 -->
+        <pose>-1.0 1.975 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <model name="tl_vertical">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </visual>
+        <!-- x = -1.5 + t/2, y = 1.5 (mittig über 1m), z = h/2 -->
+        <pose>-1.475 1.5 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <!-- --- Oben rechts (Top-Right) --- -->
+    <model name="tr_horizontal">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </visual>
+        <!-- x = +1.0, y = 2 - t/2 -->
+        <pose>1.0 1.975 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <model name="tr_vertical">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </visual>
+        <!-- x = 1.5 - t/2, y = 1.5 -->
+        <pose>1.475 1.5 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <!-- --- Unten links (Bottom-Left) --- -->
+    <model name="bl_horizontal">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </visual>
+        <!-- x = -1.0, y = -2 + t/2 -->
+        <pose>-1.0 -1.975 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <model name="bl_vertical">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </visual>
+        <!-- x = -1.5 + t/2, y = -1.5 -->
+        <pose>-1.475 -1.5 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <!-- --- Unten rechts (Bottom-Right) --- -->
+    <model name="br_horizontal">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>1.0 0.05 0.5</size></box></geometry>
+        </visual>
+        <!-- x = +1.0, y = -2 + t/2 -->
+        <pose>1.0 -1.975 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <model name="br_vertical">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 1.0 0.5</size></box></geometry>
+        </visual>
+        <!-- x = 1.5 - t/2, y = -1.5 -->
+        <pose>1.475 -1.5 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+    <!-- --- kleiner Würfel oben-links (0.5 m) --- -->
+    <model name="small_cube">
+      <static>true</static>
+      <link name="link">
+        <collision name="coll">
+          <geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+          <material><ambient>0.2 0.6 0.8 1</ambient></material>
+        </visual>
+        <!-- Position: x = -0.5, y = 0.5 (innen, frei von Kollisionen mit den L-Wänden) -->
+        <pose>-0.5 0.5 0.25 0 0 0</pose>
+      </link>
+    </model>
+
+  </world>
+</sdf>

@@ -1,0 +1,4 @@
+user@user-Alienware-Aurora-R9:~/ROS2$ ros2 run polygon_nav polygon_nav_client
+[INFO] [1757498033.509808175] [polygon_navigation_client]: Polygon Navigation Client initialized
+[INFO] [1757498033.510141561] [polygon_navigation_client]: Waiting for action server...
+[ERROR] [1757498033.760796955] [polygon_navigation_client]: Error during navigation: object bool can't be used in 'await' expression

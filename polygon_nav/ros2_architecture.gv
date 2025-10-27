@@ -1,0 +1,68 @@
+digraph ROS2_Architecture {
+    rankdir=TB;
+    node [shape=box, style=rounded];
+    
+    // External Topics (Source)
+    image_input [label="/image\n(sensor_msgs/Image)", shape=ellipse, style=filled, fillcolor=lightblue];
+    odom_input [label="/odom\n(nav_msgs/Odometry)", shape=ellipse, style=filled, fillcolor=lightblue];
+    scan_input [label="/scan\n(sensor_msgs/LaserScan)", shape=ellipse, style=filled, fillcolor=lightblue];
+    
+    // Nodes
+    subgraph cluster_detection {
+        label="Detection Nodes";
+        style=dashed;
+        
+        yolo_node [label="yolo_processor\nYOLO v8\nBYTETrack", style=filled, fillcolor=lightgreen];
+        hand_node [label="hand_gesture_detector\nMediaPipe", style=filled, fillcolor=lightgreen];
+    }
+    
+    subgraph cluster_tracking {
+        label="Tracking Nodes";
+        style=dashed;
+        
+        person_tracker [label="person_position_tracker\nPerson Position\nCalculation", style=filled, fillcolor=yellow];
+    }
+    
+    subgraph cluster_nav {
+        label="Navigation";
+        style=dashed;
+        
+        nav_client [label="polygon_navigation_client\nNav2 Client", style=filled, fillcolor=orange];
+        nav_action [label="NavigateToPose\nAction Server", shape=ellipse, style=filled, fillcolor=lightcoral];
+    }
+    
+    // Topics
+    yolo_detections [label="/yolo/detections\n(vision_msgs/Detection2DArray)", shape=ellipse];
+    yolo_image [label="/yolo/processed_image\n(sensor_msgs/Image)", shape=ellipse];
+    hand_finger [label="/hand/pointer_finger\n(geometry_msgs/PointStamped)", shape=ellipse];
+    hand_image [label="/hand/annotated_image\n(sensor_msgs/Image)", shape=ellipse];
+    person_pos [label="/person_position\n(geometry_msgs/PointStamped)", shape=ellipse];
+    person_marker [label="/person_marker\n(geometry_msgs/PoseStamped)", shape=ellipse];
+    
+    // Input connections
+    image_input -> yolo_node [label="SUBSCRIBE"];
+    image_input -> hand_node [label="SUBSCRIBE"];
+    
+    odom_input -> person_tracker [label="SUBSCRIBE"];
+    scan_input -> person_tracker [label="SUBSCRIBE"];
+    
+    // YOLO Node connections
+    yolo_node -> yolo_detections [label="PUBLISH"];
+    yolo_node -> yolo_image [label="PUBLISH"];
+    
+    // Hand Node connections
+    hand_node -> hand_finger [label="PUBLISH"];
+    hand_node -> hand_image [label="PUBLISH"];
+    
+    // Person Tracker connections
+    yolo_detections -> person_tracker [label="SUBSCRIBE"];
+    person_tracker -> person_pos [label="PUBLISH"];
+    person_tracker -> person_marker [label="PUBLISH"];
+    
+    // Navigation connections
+    nav_client -> nav_action [label="ACTION_CLIENT", style=dashed, color=red];
+    
+    // Styling
+    edge [color=blue];
+}
+

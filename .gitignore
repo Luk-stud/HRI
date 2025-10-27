@@ -1,0 +1,12 @@
+# ohne build, install, log und detectons file die type json sind
+build/
+install/
+log/
+*.json
+
+# keine frames auf oberster ebene¨
+frames*.pdf
+
+PolygonNavigationClient.py
+
+publish_goal_pose.py
