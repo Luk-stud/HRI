@@ -35,6 +35,9 @@
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-mediapipe</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>go1_legged_msgs</exec_depend>
+  <exec_depend>unitree_legged_sdk</exec_depend>
+  <exec_depend>unitree_go</exec_depend>
 
 
 

@@ -11,6 +11,7 @@ from copy import deepcopy
 
 class State(Enum):
     """State Machine States"""
+    IDLE = "idle"
     SIT = "sit"
     FOLLOW = "follow"
 
@@ -19,7 +20,7 @@ class StateMachine(Node):
         super().__init__('state_machine')
         
         # Current state
-        self.current_state = State.SIT
+        self.current_state = State.IDLE
         self.current_user_id = None
         self.last_action_id = None  # Track last action to avoid duplicate publications
         
@@ -96,16 +97,19 @@ class StateMachine(Node):
             if current_action_id == "follow":
                 return State.FOLLOW
             # If action is explicitly "sit", transition to SIT state
-            elif current_action_id == "sit" or current_action_id == "default":
+            elif current_action_id == "sit":
                 return State.SIT
+            # If action is "default" or "idle", transition to IDLE state
+            elif current_action_id == "default" or current_action_id == "idle":
+                return State.IDLE
         elif current_action_id == self.last_action_id:
             self.get_logger().info(
                 f'⚠️ Same action_id "{current_action_id}" received - no state change'
             )
         
-        # Default: Stay in current state (or SIT if no detections)
+        # Default: Stay in current state (or IDLE if no detections)
         if not msg.detections:
-            return State.SIT
+            return State.IDLE
         
         return self.current_state  # Keep current state if no explicit action
     
@@ -134,6 +138,9 @@ class StateMachine(Node):
                             break
                         except ValueError:
                             self.current_user_id = None
+        elif new_state == State.IDLE:
+            # In IDLE mode, no user to track
+            self.current_user_id = None
         else:
             # In SIT mode, no user to track
             self.current_user_id = None

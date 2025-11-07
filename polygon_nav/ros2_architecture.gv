@@ -16,11 +16,27 @@ digraph ROS2_Architecture {
         hand_node [label="hand_gesture_detector\nMediaPipe", style=filled, fillcolor=lightgreen];
     }
     
+    subgraph cluster_fusion {
+        label="Fusion & State Management";
+        style=dashed;
+        
+        sensor_fusion [label="sensor_fusion\nGesture + Detection\nFusion", style=filled, fillcolor=lightyellow];
+        state_machine [label="state_machine\nState: IDLE/SIT/FOLLOW", style=filled, fillcolor=orange];
+    }
+    
     subgraph cluster_tracking {
         label="Tracking Nodes";
         style=dashed;
         
         person_tracker [label="person_position_tracker\nPerson Position\nCalculation", style=filled, fillcolor=yellow];
+    }
+    
+    subgraph cluster_control {
+        label="Control Nodes";
+        style=dashed;
+        
+        sit_node [label="sit_node\nSportClient SDK\nSit/RiseSit", style=filled, fillcolor=lightcoral];
+        follow_node [label="follow_node\nVelocity Control", style=filled, fillcolor=lightcyan];
     }
     
     subgraph cluster_nav {
@@ -31,19 +47,24 @@ digraph ROS2_Architecture {
         nav_action [label="NavigateToPose\nAction Server", shape=ellipse, style=filled, fillcolor=lightcoral];
     }
     
-    // Topics
+    // Internal Topics
     yolo_detections [label="/yolo/detections\n(vision_msgs/Detection2DArray)", shape=ellipse];
     yolo_image [label="/yolo/processed_image\n(sensor_msgs/Image)", shape=ellipse];
     hand_finger [label="/hand/pointer_finger\n(geometry_msgs/PointStamped)", shape=ellipse];
+    hand_thumbs_up [label="/hand/thumbs_up\n(geometry_msgs/PointStamped)", shape=ellipse];
     hand_image [label="/hand/annotated_image\n(sensor_msgs/Image)", shape=ellipse];
+    fusion_out [label="/fusion_out\n(vision_msgs/Detection2DArray)", shape=ellipse, style=filled, fillcolor=lightyellow];
+    state_machine_out [label="/state_machine_out\n(vision_msgs/Detection2DArray)", shape=ellipse, style=filled, fillcolor=orange];
     person_pos [label="/person_position\n(geometry_msgs/PointStamped)", shape=ellipse];
     person_marker [label="/person_marker\n(geometry_msgs/PoseStamped)", shape=ellipse];
+    cmd_vel [label="/cmd_vel\n(geometry_msgs/Twist)", shape=ellipse, style=filled, fillcolor=lightcyan];
     
     // Input connections
     image_input -> yolo_node [label="SUBSCRIBE"];
     image_input -> hand_node [label="SUBSCRIBE"];
     
     odom_input -> person_tracker [label="SUBSCRIBE"];
+    odom_input -> follow_node [label="SUBSCRIBE"];
     scan_input -> person_tracker [label="SUBSCRIBE"];
     
     // YOLO Node connections
@@ -52,7 +73,28 @@ digraph ROS2_Architecture {
     
     // Hand Node connections
     hand_node -> hand_finger [label="PUBLISH"];
+    hand_node -> hand_thumbs_up [label="PUBLISH"];
     hand_node -> hand_image [label="PUBLISH"];
+    
+    // Sensor Fusion connections
+    yolo_detections -> sensor_fusion [label="SUBSCRIBE"];
+    yolo_image -> sensor_fusion [label="SUBSCRIBE"];
+    hand_finger -> sensor_fusion [label="SUBSCRIBE"];
+    hand_thumbs_up -> sensor_fusion [label="SUBSCRIBE"];
+    hand_image -> sensor_fusion [label="SUBSCRIBE"];
+    sensor_fusion -> fusion_out [label="PUBLISH"];
+    
+    // State Machine connections
+    fusion_out -> state_machine [label="SUBSCRIBE"];
+    state_machine -> state_machine_out [label="PUBLISH"];
+    
+    // Sit Node connections (bidirectional with fusion_out)
+    state_machine_out -> sit_node [label="SUBSCRIBE"];
+    sit_node -> fusion_out [label="PUBLISH\n(idle state)", style=dashed, color=red];
+    
+    // Follow Node connections
+    state_machine_out -> follow_node [label="SUBSCRIBE"];
+    follow_node -> cmd_vel [label="PUBLISH"];
     
     // Person Tracker connections
     yolo_detections -> person_tracker [label="SUBSCRIBE"];
@@ -65,4 +107,3 @@ digraph ROS2_Architecture {
     // Styling
     edge [color=blue];
 }
-
