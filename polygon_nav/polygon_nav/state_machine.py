@@ -109,7 +109,7 @@ class StateMachine(Node):
         
         # Default: Stay in current state (or IDLE if no detections)
         if not msg.detections:
-            return State.IDLE
+            return current_action_id
         
         return self.current_state  # Keep current state if no explicit action
     
@@ -180,7 +180,7 @@ class StateMachine(Node):
         self.state_pub.publish(output_msg)
         
         if self.debug:
-            self.get_logger().info(
+            self.get_logger().info(,
                 f'📤 Published: State={self.current_state.value}, '
                 f'User={self.current_user_id}, '
                 f'Detections={len(output_msg.detections)}'
