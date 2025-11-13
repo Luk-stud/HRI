@@ -109,7 +109,7 @@ class StateMachine(Node):
         
         # Default: Stay in current state (or IDLE if no detections)
         if not msg.detections:
-            return current_action_id
+            return self.current_state
         
         return self.current_state  # Keep current state if no explicit action
     

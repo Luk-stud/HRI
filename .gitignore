@@ -3,6 +3,7 @@ build/
 install/
 log/
 *.json
+polygon_nav/polygon_nav/__pycache__/
 
 # keine frames auf oberster ebene¨
 frames*.pdf
