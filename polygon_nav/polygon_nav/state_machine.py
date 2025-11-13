@@ -46,8 +46,6 @@ class StateMachine(Node):
             1  # Queue size 1
         )
         
-        # Periodic state check timer
-        self.timer = self.create_timer(0.1, self.timer_callback)  # 10 Hz
         
         self.get_logger().info('🤖 State Machine Node gestartet ✅')
         self.get_logger().info(f'Initial State: {self.current_state.value.upper()}')
@@ -180,16 +178,11 @@ class StateMachine(Node):
         self.state_pub.publish(output_msg)
         
         if self.debug:
-            self.get_logger().info(,
+            self.get_logger().info(
                 f'📤 Published: State={self.current_state.value}, '
                 f'User={self.current_user_id}, '
                 f'Detections={len(output_msg.detections)}'
             )
-    
-    def timer_callback(self):
-        """Periodic callback for state monitoring"""
-        # This can be used for timeouts, state resets, etc.
-        pass
     
     def get_current_state(self):
         """Get current state as string"""
