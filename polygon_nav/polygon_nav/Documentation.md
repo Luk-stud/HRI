@@ -1,4 +1,4 @@
-Datenstruktur 2DDetectionArray:
+### Datenstruktur 2DDetectionArray:
 
 - Diese Struktur wird benötigt von topic fusion_out --> state_maschine_node --> state_maschine_out --> sit_node 
 
@@ -41,3 +41,17 @@ Datenstruktur 2DDetectionArray:
     }
   ]
 }
+
+### Änderungen in sit_node 
+- set_mode Funktion mit SportsMode ersetzen. 
+
+
+### Weitere Anpassungen die vorgenommen werden müssen
+- Signal um Following zu stoppen
+- Signal um aufzustehen
+
+
+
+### Was wir bereits (konzeptionell) haben
+- Signal (Index Finger) um Following zu starten
+- Signal (Daumen) um SIT zu starten
