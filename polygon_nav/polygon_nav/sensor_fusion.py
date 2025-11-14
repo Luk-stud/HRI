@@ -80,7 +80,7 @@ class SensorFusion(Node):
         
         # Publisher
         self.fusion_pub = self.create_publisher(
-            String,
+            RosString,
             '/fusion_out',
             10  # Queue size 10
         )
@@ -233,7 +233,6 @@ class SensorFusion(Node):
         
         if result_action is None:
             return
-        # Publish fused data (only if we have an explicit action held for 3+ seconds)
 
         if result_action != self.last_published_action:
             out = RosString()
