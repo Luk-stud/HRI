@@ -24,28 +24,15 @@ digraph ROS2_Architecture {
         state_machine [label="state_machine\nState: IDLE/SIT/FOLLOW", style=filled, fillcolor=orange];
     }
     
-    subgraph cluster_tracking {
-        label="Tracking Nodes";
-        style=dashed;
-        
-        person_tracker [label="person_position_tracker\nPerson Position\nCalculation", style=filled, fillcolor=yellow];
-    }
+    /* Tracking nodes removed (person_position_tracker deprecated) */
     
     subgraph cluster_control {
         label="Control Nodes";
         style=dashed;
-        
-        sit_node [label="sit_node\nSportClient SDK\nSit/RiseSit", style=filled, fillcolor=lightcoral];
-        follow_node [label="follow_node\nVelocity Control", style=filled, fillcolor=lightcyan];
+        pose_control [label="pose_control\nPoseControlSkill\nDesiredPose publisher", style=filled, fillcolor=lightcoral];
     }
     
-    subgraph cluster_nav {
-        label="Navigation";
-        style=dashed;
-        
-        nav_client [label="polygon_navigation_client\nNav2 Client", style=filled, fillcolor=orange];
-        nav_action [label="NavigateToPose\nAction Server", shape=ellipse, style=filled, fillcolor=lightcoral];
-    }
+    /* Navigation client removed (polygon_navigation_client deprecated) */
     
     // Internal Topics
     yolo_detections [label="/yolo/detections\n(vision_msgs/Detection2DArray)", shape=ellipse];
@@ -53,19 +40,18 @@ digraph ROS2_Architecture {
     hand_finger [label="/hand/pointer_finger\n(geometry_msgs/PointStamped)", shape=ellipse];
     hand_thumbs_up [label="/hand/thumbs_up\n(geometry_msgs/PointStamped)", shape=ellipse];
     hand_image [label="/hand/annotated_image\n(sensor_msgs/Image)", shape=ellipse];
-    fusion_out [label="/fusion_out\n(vision_msgs/Detection2DArray)", shape=ellipse, style=filled, fillcolor=lightyellow];
-    state_machine_out [label="/state_machine_out\n(vision_msgs/Detection2DArray)", shape=ellipse, style=filled, fillcolor=orange];
-    person_pos [label="/person_position\n(geometry_msgs/PointStamped)", shape=ellipse];
-    person_marker [label="/person_marker\n(geometry_msgs/PoseStamped)", shape=ellipse];
-    cmd_vel [label="/cmd_vel\n(geometry_msgs/Twist)", shape=ellipse, style=filled, fillcolor=lightcyan];
+    fusion_out [label="/fusion_out\n(std_msgs/String)", shape=ellipse, style=filled, fillcolor=lightyellow];
+    state_machine_out [label="/state_machine_out\n(std_msgs/String)", shape=ellipse, style=filled, fillcolor=orange];
+    voice_commands [label="/voice_commands\n(std_msgs/String)", shape=ellipse];
+    /* robot_behavior_state removed - pose_control subscribes to state_machine_out now */
+    desired_pose [label="/desired_pose\n(go1_legged_msgs/DesiredPose)", shape=ellipse];
+    /* person_position and nav_action topics removed (tracking & nav client deprecated) */
     
     // Input connections
     image_input -> yolo_node [label="SUBSCRIBE"];
     image_input -> hand_node [label="SUBSCRIBE"];
     
-    odom_input -> person_tracker [label="SUBSCRIBE"];
-    odom_input -> follow_node [label="SUBSCRIBE"];
-    scan_input -> person_tracker [label="SUBSCRIBE"];
+    /* odom/scan -> person_tracker removed (person_position_tracker deprecated) */
     
     // YOLO Node connections
     yolo_node -> yolo_detections [label="PUBLISH"];
@@ -75,6 +61,15 @@ digraph ROS2_Architecture {
     hand_node -> hand_finger [label="PUBLISH"];
     hand_node -> hand_thumbs_up [label="PUBLISH"];
     hand_node -> hand_image [label="PUBLISH"];
+
+    // Microphone node (speech -> voice commands)
+    subgraph cluster_audio {
+        label="Audio / Speech";
+        style=dashed;
+        mic_node [label="vosk_mic_node\nVosk Microphone\nSpeech->voice_commands", style=filled, fillcolor=lightgreen];
+    }
+    mic_node -> voice_commands [label="PUBLISH"];
+    voice_commands -> sensor_fusion [label="SUBSCRIBE"];
     
     // Sensor Fusion connections
     yolo_detections -> sensor_fusion [label="SUBSCRIBE"];
@@ -88,21 +83,15 @@ digraph ROS2_Architecture {
     fusion_out -> state_machine [label="SUBSCRIBE"];
     state_machine -> state_machine_out [label="PUBLISH"];
     
-    // Sit Node connections (bidirectional with fusion_out)
-    state_machine_out -> sit_node [label="SUBSCRIBE"];
-    sit_node -> fusion_out [label="PUBLISH\n(idle state)", style=dashed, color=red];
+    // pose_control connections (listens to state_machine_out, publishes desired_pose)
+    state_machine_out -> pose_control [label="SUBSCRIBE"];
+    pose_control -> desired_pose [label="PUBLISH\n(go1_legged_msgs/DesiredPose)"];
     
-    // Follow Node connections
-    state_machine_out -> follow_node [label="SUBSCRIBE"];
-    follow_node -> cmd_vel [label="PUBLISH"];
+    // Follow node removed — velocity control handled elsewhere (nav client / other controllers)
     
-    // Person Tracker connections
-    yolo_detections -> person_tracker [label="SUBSCRIBE"];
-    person_tracker -> person_pos [label="PUBLISH"];
-    person_tracker -> person_marker [label="PUBLISH"];
+    // Person tracker removed — person position published by other components if needed
     
-    // Navigation connections
-    nav_client -> nav_action [label="ACTION_CLIENT", style=dashed, color=red];
+    // Navigation client removed
     
     // Styling
     edge [color=blue];

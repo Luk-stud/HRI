@@ -1,57 +1,24 @@
 ### Datenstruktur 2DDetectionArray:
 
-- Diese Struktur wird benötigt von topic fusion_out --> state_maschine_node --> state_maschine_out --> sit_node 
-
-
-{
-  "header": {
-    "stamp": { "sec": 1699860000, "nanosec": 123456789 },
-    "frame_id": "camera_link"
-  },
-  "detections": [
-    {
-      "header": {
-        "stamp": { "sec": 1699860000, "nanosec": 123456789 },
-        "frame_id": "camera_link"
-      },
-      "bbox": {
-        "center": { "x": 0.5, "y": 0.4 },
-        "size_x": 0.2,
-        "size_y": 0.3
-      },
-      "results": [
-        { "id": "person", "score": 0.95 }
-      ],
-      "id": "follow:42"
-    },
-    {
-      "header": {
-        "stamp": { "sec": 1699860001, "nanosec": 0 },
-        "frame_id": "camera_link"
-      },
-      "bbox": {
-        "center": { "x": 0.8, "y": 0.2 },
-        "size_x": 0.15,
-        "size_y": 0.25
-      },
-      "results": [
-        { "id": "unknown", "score": 0.50 }
-      ],
-      "id": "default"
-    }
-  ]
-}
-
-### Änderungen in sit_node 
-- set_mode Funktion mit SportsMode ersetzen. 
-
-
-### Weitere Anpassungen die vorgenommen werden müssen
-- Signal um Following zu stoppen
-- Signal um aufzustehen
-
 
 
 ### Was wir bereits (konzeptionell) haben
 - Signal (Index Finger) um Following zu starten
-- Signal (Daumen) um SIT zu starten
+- Signal (Daumen) um FOLLOW zu stoppen
+- Signal (Voice: UP) um SIT zu beenden
+- Signal (Voice: SIT) um in SIT zu gehen
+
+
+Siehe Architektur hier 
+-- > polygon_nav/ros2_architecture.png
+
+Siehe StateMaschine hier
+polygon_nav/state_machine.png
+
+
+### Wiederverwendeter Code
+- pose_control
+
+
+### Was noch fehlt 
+- follow_node 

@@ -100,7 +100,7 @@ class PoseControlSkill(Node):
         ]
 
         self.pose_publisher = self.create_publisher(DesiredPose, '/desired_pose', 10)
-        self.create_subscription(String, '/robot_behavior/active_state', self.state_callback, 10)
+        self.create_subscription(String, '/state_machine_out', self.state_callback, 10)
         self.get_logger().info("Pose Control Skill ready.")
 
     def state_callback(self, msg: String):
@@ -117,7 +117,7 @@ class PoseControlSkill(Node):
             self.start_animation(self.idle_sequence, loop=True)
 
         # NOTE: SITTING is no longer a state in the new FSM, but the logic is kept here.
-        elif self.active_state == 'SITTING':
+        elif self.active_state == 'SIT':
             self.start_interpolation(self.poses['SITTING'])
 
         # CHANGED: Now triggers the dance animation with looping enabled.
@@ -125,7 +125,7 @@ class PoseControlSkill(Node):
             self.start_animation(self.dances["DANCING_2"], loop=True)
 
         # CHANGED: State name updated from 'FOLLOWING_PERSON' to 'FOLLOWING'.
-        elif self.active_state == 'FOLLOWING':
+        elif self.active_state == 'FOLLOW':
             # When following, transition smoothly back to a neutral standing pose
             self.start_interpolation(self.poses['STANDING'])
 

@@ -33,7 +33,7 @@ class VoskMicNode(Node):
             self.recognizer = KaldiRecognizer(model, sample_rate)
             self.get_logger().info("Free speech mode enabled")
 
-        self.command_pub = self.create_publisher(String, "voice_commands", 10)
+        self.command_pub = self.create_publisher(String, "/voice_commands", 10)
 
         self.sample_rate = int(sample_rate)
         self.mic = pyaudio.PyAudio()
