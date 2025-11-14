@@ -21,4 +21,5 @@ polygon_nav/state_machine.png
 
 
 ### Was noch fehlt 
-- follow_node 
+- follow_node (Follow Logik)
+- follow_node abstimmen
