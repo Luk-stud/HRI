@@ -2,7 +2,6 @@
 # state_machine.py
 # State Machine for Follow/Sit behavior based on sensor fusion output
 
-from tokenize import String
 import rclpy
 from rclpy.node import Node
 from vision_msgs.msg import Detection2DArray
@@ -28,6 +27,7 @@ class StateMachine(Node):
         # Declare parameters
         self.declare_parameter('debug', False)
         self.debug = self.get_parameter('debug').get_parameter_value().bool_value
+        self.last_published_state = None 
         
         # Subscriber for fusion output
         self.fusion_sub = self.create_subscription(
@@ -99,16 +99,17 @@ class StateMachine(Node):
     def log_state(self):
         """Log current state information"""
         if self.debug:
-            self.get_logger().info(
-                f'🤖 Current State: {self.current_state.value.upper()}, '
-                f'User ID: {self.current_user_id}'
-            )
+            self.get_logger().info(f'🤖 Current State: {self.current_state.value.upper()}')
     
     def publish_state(self):
-        """Publish current state as std_msgs/String on /state_machine_out"""
+        """Publish current state as std_msgs/String on /state_machine_out
+        and avoid duplicate publications."""
         out = RosString()
         out.data = self.current_state.value.upper()
+        if out.data == self.last_published_state:
+            return  # avoid duplicate publications
         self.state_pub.publish(out)
+        self.last_published_state = out.data
         if self.debug:
             self.get_logger().info(f'📤 Published: {out.data}')
     
@@ -120,7 +121,6 @@ class StateMachine(Node):
         """Create summary of current state machine status"""
         return {
             'current_state': self.current_state.value,
-            'user_id': self.current_user_id,
             'timestamp': self.get_clock().now()
         }
 

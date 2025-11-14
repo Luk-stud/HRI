@@ -2,7 +2,6 @@
 # sensor_fusion.py
 # Fuses data from YOLO, Hand Gesture Detector and other sensors
 
-from tokenize import String
 import rclpy
 from rclpy.node import Node
 from vision_msgs.msg import Detection2DArray
@@ -72,7 +71,7 @@ class SensorFusion(Node):
         )
 
         self.voice_command_sub = self.create_subscription(
-            String,
+            RosString,
             '/voice_commands',
             self.voice_command_callback,
             10  # Queue size 10
