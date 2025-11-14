@@ -12,7 +12,7 @@ class VoskMicNode(Node):
     def __init__(self):
         super().__init__("vosk_mic_node")
 
-        default_model_path = "/ros2_ws/src/vosk_mic_listener/vosk_mic_listener/model/vosk-model-de-0.21"
+        default_model_path = "/home/user/ROS2/polygon_nav/polygon_nav/vosk_mic_listener/model/vosk-model-de-0.21"
 
         self.declare_parameter("model_path", default_model_path)
         self.declare_parameter("sample_rate", 16000.0)
@@ -33,7 +33,7 @@ class VoskMicNode(Node):
             self.recognizer = KaldiRecognizer(model, sample_rate)
             self.get_logger().info("Free speech mode enabled")
 
-        self.command_pub = self.create_publisher(String, "voice_commands", 10)
+        self.command_pub = self.create_publisher(String, "/voice_commands", 10)
 
         self.sample_rate = int(sample_rate)
         self.mic = pyaudio.PyAudio()

@@ -5,7 +5,7 @@ package_name = 'polygon_nav'
 setup(
     name=package_name,
     version='0.1.0',
-    packages=[package_name],
+    packages=[package_name, 'polygon_nav.vosk_mic_listener'],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
@@ -25,6 +25,7 @@ setup(
         'state_machine = polygon_nav.state_machine:main',
         'follow_node = polygon_nav.follow_node:main',
         'sit_node = polygon_nav.sit_node:main',
+        'vosk_voice_assistant = polygon_nav.vosk_mic_listener.mic_node:main',
     ],
 },
 )

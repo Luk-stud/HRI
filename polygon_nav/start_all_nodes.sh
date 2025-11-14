@@ -23,6 +23,14 @@ source "$WORKSPACE_ROOT/install/setup.bash"
 # 3. Extract node names from setup.py
 SCRIPT_DIR="/home/user/ROS2/polygon_nav"
 cd "$SCRIPT_DIR"
+
+# 4. Start all nodes
+for node in $NODES; do
+    echo "▶ Starting: ros2 run polygon_nav $node"
+    ros2 run polygon_nav $node &
+done
+
+
 NODES=$(python3 << 'PYTHON_EOF'
 import re
 with open('setup.py', 'r') as f:
@@ -37,11 +45,10 @@ PYTHON_EOF
 echo "Found nodes: $NODES"
 echo ""
 
-# 4. Start all nodes
-for node in $NODES; do
-    echo "▶ Starting: ros2 run polygon_nav $node"
-    ros2 run polygon_nav $node &
-done
+
+# start the vosk voice assistant manually
+echo "▶ Starting: ros2 run polygon_nav vosk_voice_assistant"
+ros2 run polygon_nav vosk_voice_assistant
 
 echo ""
 echo "✅ All nodes started"
