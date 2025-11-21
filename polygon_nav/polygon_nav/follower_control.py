@@ -25,16 +25,8 @@ class FollowerControlSkill(Node):
         self.is_active = False
 
         # ROS interfaces
-        self.create_subscription(String, '/robot_behavior/active_state', self.state_callback, 10)
+        self.create_subscription(String, '/state_machine_out', self.state_callback, 10)
         self.create_subscription(PointStamped, '/human_tracker/target_person', self.target_callback, 10)
-        self.vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
-
-        self.get_logger().info("Follower Control Skill ready.")
-
-    def state_callback(self, msg: String):
-        """Activates or deactivates this skill based on the brain's command."""
-        # CHANGED: The state name is updated from 'FOLLOWING_PERSON' to 'FOLLOWING'
-        # to match the corrected behavior_manager.
         should_be_active = (msg.data == 'FOLLOWING')
         
         if should_be_active and not self.is_active:

@@ -68,7 +68,7 @@ class YoloProcessor(Node):
             )
             
             # 3. 📋 Detections erstellen
-            detection_array = Detection2DArray()
+            detection_array = Detection2DArray(header=msg.header)
             detection_array.header = msg.header
             
             # 4. 🎨 Visualisiertes Bild erstellen

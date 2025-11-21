@@ -76,7 +76,7 @@ class SensorFusion(Node):
             self.voice_command_callback,
             10  # Queue size 10
         )
-        
+
         # Publisher
         self.fusion_pub = self.create_publisher(
             RosString,
@@ -84,6 +84,14 @@ class SensorFusion(Node):
             10  # Queue size 10
         )
 
+        self.target_person_pub = self.create_publisher(
+            PointStamped,
+            '/human_tracker/target_person',
+            10
+        )
+
+
+        
 
         
         # Timer to clear old gestures (1 Hz)
@@ -98,6 +106,9 @@ class SensorFusion(Node):
         self.finger_start_time = None  # When finger pointing was first detected
         self.last_published_action = None  # Track last published action to avoid duplicates
         
+        # Tracking ID for target person
+        self.tracked_person_id = None  # Store the ID of the person being tracked
+        
         self.get_logger().info('🔀 Sensor Fusion Node gestartet ✅')
         self.get_logger().info(f'Action ID: {self.action_id}')
         self.get_logger().info(f'User ID: {self.user_id if self.user_id != -1 else "unspecified"}')
@@ -107,11 +118,86 @@ class SensorFusion(Node):
     def yolo_detections_callback(self, msg):
         """Callback für YOLO Detections"""
         self.current_detections = msg
+        #function to publish information on /human_tracker/target_person
+        self.target_person_merge()
         self.process_and_publish()
+
+    def target_person_merge(self):
+        """Hier werden die nötigen Informationen für das follower_tracking published
+        Es werden benötigt:
+        1. Die Handinformationen von mediapipe
+        2. Die Bboxes von yolo mit der richtigen Id die zum Handzeichen gemappt wird.
+        
+        Die Funktion prüft ob Koordinaten von thumbs_up oder pointer_finger innerhalb
+        der Bbox einer YOLO Detection sind. Wenn ja, wird die ID gespeichert und
+        solange diese ID vorhanden ist, werden nur Informationen von dieser ID verwendet."""
+        
+        # Prüfen ob Detections vorhanden sind
+        if self.current_detections is None or len(self.current_detections.detections) == 0:
+            return
+        
+        output_point = PointStamped()
+        output_point.header.stamp = self.get_clock().now().to_msg()
+        # Frame ID aus Detection-Header übernehmen, falls verfügbar
+        if hasattr(self.current_detections, 'header') and self.current_detections.header.frame_id:
+            output_point.header.frame_id = self.current_detections.header.frame_id
+        else:
+            output_point.header.frame_id = "camera_frame"  # Fallback
+        
+        # Wenn eine ID bereits gespeichert ist, nur diese ID verwenden
+        if self.tracked_person_id is not None:
+            for det in self.current_detections.detections:
+                # Prüfen ob Detection die gespeicherte ID hat
+                if hasattr(det, 'id') and det.id == self.tracked_person_id:
+                    # Informationen aus dieser Detection verwenden
+                    output_point.point.x = det.bbox.center.position.x
+                    output_point.point.y = det.bbox.size_y  # box_height
+                    self.target_person_pub.publish(output_point)
+                    return
+            # Wenn ID nicht mehr vorhanden ist, zurücksetzen
+            self.tracked_person_id = None
+        
+        # Prüfen ob thumbs_up oder pointer_finger Koordinaten vorhanden sind
+        hand_point = None
+        if self.current_hand_thumbs_up is not None:
+            try:
+                hand_point = (self.current_hand_thumbs_up.point.x, self.current_hand_thumbs_up.point.y)
+            except Exception:
+                pass
+        
+        if hand_point is None and self.current_hand_finger is not None:
+            try:
+                hand_point = (self.current_hand_finger.point.x, self.current_hand_finger.point.y)
+            except Exception:
+                pass
+        
+        # Wenn Hand-Koordinaten vorhanden sind, prüfen ob sie in einer Bbox liegen
+        if hand_point is not None:
+            px, py = hand_point
+            for det in self.current_detections.detections:
+                try:
+                    if self.is_point_in_bbox(px, py, det):
+                        # ID speichern
+                        if hasattr(det, 'id') and det.id:
+                            self.tracked_person_id = det.id
+                            self.get_logger().info(f'🎯 Person ID {self.tracked_person_id} wird jetzt getrackt')
+                        
+                        # Informationen aus dieser Detection verwenden
+                        output_point.point.x = det.bbox.center.position.x
+                        output_point.point.y = det.bbox.size_y  # box_height
+                        self.target_person_pub.publish(output_point)
+                        return
+                except Exception:
+                    # Robust gegen fehlerhafte Detections-Felder
+                    continue
+        
+        # Wenn keine Hand-Koordinaten in einer Bbox gefunden wurden, nichts publizieren
+
 
     def voice_command_callback(self, msg):
         """Callback für Sprachbefehle"""
         self.current_voice_command = msg.data
+        self.get_logger().info(f'🔊 Sprachbefehl empfangen: {msg.data}')
         self.process_and_publish()    
     
     def yolo_image_callback(self, msg):
@@ -197,9 +283,9 @@ class SensorFusion(Node):
         #voice command check
         if hasattr(self, 'current_voice_command') and self.current_voice_command:
             cmd = str(self.current_voice_command).strip().lower()
-            if cmd in ('sitz', 'sit', ):
+            if cmd in ('sitz', 'sit', 'dog_sit'):
                 result_action = "SIT"
-            elif cmd in ('auf', 'up'):
+            elif cmd in ('auf', 'up', 'dog_up'):
                 result_action = "UP"
 
         #thumbs up check

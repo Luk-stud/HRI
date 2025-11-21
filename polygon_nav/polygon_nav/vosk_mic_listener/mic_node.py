@@ -3,6 +3,7 @@ import json
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from std_msgs.msg import String as RosString
 
 import pyaudio
 from vosk import Model, KaldiRecognizer
@@ -22,7 +23,6 @@ class VoskMicNode(Node):
         super().__init__("vosk_mic_node")
 
         self.awaiting_command = False
-
         self.declare_parameter("model_path", MODEL_PATH)
         self.declare_parameter("sample_rate", SAMPLE_RATE)
         self.declare_parameter("grammar", GRAMMAR)
@@ -45,8 +45,8 @@ class VoskMicNode(Node):
             self.recognizer = KaldiRecognizer(model, self.sample_rate)
 
         # HIER MUSS ROSSTRING SEIN FABIAN
-        self.command_pub = self.create_publisher(String, "/voice_commands", 10)
-
+        self.command_pub = self.create_publisher(RosString, "/voice_commands", 10)
+        self.log_pub = self.create_publisher(RosString, "/voice_commands_log", 10)
         self.mic = pyaudio.PyAudio()
 
         self.get_logger().info("Available audio devices:")
@@ -111,8 +111,10 @@ class VoskMicNode(Node):
                 self.get_logger().info(f"Recognized text: '{text}'")
                 self.handle_text(text)
         else:
+            partial_msg = RosString()
             partial = self.recognizer.PartialResult()
-            self.get_logger().info(f"Partial: {partial}")
+            partial_msg.data = partial
+            self.log_pub.publish(partial_msg)
 
     def handle_text(self, text: str):
         # Check for wake word
@@ -129,8 +131,7 @@ class VoskMicNode(Node):
 
                     self.get_logger().info(f"Command sequence detected: '{cmd_phrase}'")
                     self.get_logger().info(log_msg)
-
-                    msg = String()
+                    msg = RosString()
                     msg.data = publish_value
                     self.command_pub.publish(msg)
 
