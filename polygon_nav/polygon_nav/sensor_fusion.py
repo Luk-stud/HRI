@@ -12,6 +12,7 @@ import numpy as np
 from cv_bridge import CvBridge
 import cv2
 from copy import deepcopy
+from std_msgs.msg import String as RosString
 
 class SensorFusion(Node):
     def __init__(self):
@@ -31,58 +32,65 @@ class SensorFusion(Node):
         self.current_hand_finger = None
         self.current_hand_thumbs_up = None
         self.current_hand_image = None
-        
-        # CV Bridge
-        self.bridge = CvBridge()
+        self.current_voice_command = None
         
         # Subscribers
         self.yolo_detections_sub = self.create_subscription(
             Detection2DArray,
             '/yolo/detections',
             self.yolo_detections_callback,
-            1  # Queue size 1
+            10  # Queue size 1
         )
         
         self.yolo_image_sub = self.create_subscription(
             Image,
             '/yolo/processed_image',
             self.yolo_image_callback,
-            1  # Queue size 1
+            10  # Queue size 10
         )
         
         self.hand_finger_sub = self.create_subscription(
             PointStamped,
             '/hand/pointer_finger',
             self.hand_finger_callback,
-            1  # Queue size 1
+            10  # Queue size 10
         )
         
         self.hand_image_sub = self.create_subscription(
             Image,
             '/hand/annotated_image',
             self.hand_image_callback,
-            1  # Queue size 1
+            10  # Queue size 10
         )
         
         self.hand_thumbs_up_sub = self.create_subscription(
             PointStamped,
             '/hand/thumbs_up',
             self.hand_thumbs_up_callback,
-            1  # Queue size 1
+            10  # Queue size 10
+        )
+
+        self.voice_command_sub = self.create_subscription(
+            RosString,
+            '/voice_commands',
+            self.voice_command_callback,
+            10  # Queue size 10
         )
         
         # Publisher
         self.fusion_pub = self.create_publisher(
-            Detection2DArray,
+            RosString,
             '/fusion_out',
-            1  # Queue size 1
+            10  # Queue size 10
         )
+
+
         
         # Timer to clear old gestures (1 Hz)
         self.gesture_timeout = 0.3  # Clear gestures after 0.3 seconds
-        self.last_finger_time = None
-        self.last_thumbs_up_time = None
-        self.create_timer(0.5, self.gesture_timeout_callback)
+        self.last_finger_time = None #time when finger was detected last time
+        self.last_thumbs_up_time = None #time when thumbs up was detected last time
+        self.create_timer(0.5, self.gesture_timeout_callback) # timer um 
         
         # Gesture duration tracking (3 seconds minimum)
         self.gesture_duration_required = 3.0  # Minimum 3 seconds
@@ -100,6 +108,11 @@ class SensorFusion(Node):
         """Callback für YOLO Detections"""
         self.current_detections = msg
         self.process_and_publish()
+
+    def voice_command_callback(self, msg):
+        """Callback für Sprachbefehle"""
+        self.current_voice_command = msg.data
+        self.process_and_publish()    
     
     def yolo_image_callback(self, msg):
         """Callback für YOLO verarbeitetes Bild"""
@@ -143,8 +156,8 @@ class SensorFusion(Node):
         
         # Clear finger if timeout
         if self.last_finger_time:
-            age = (now - self.last_finger_time).nanoseconds / 1e9
-            if age > self.gesture_timeout:
+            time_since_last_finger_detection = (now - self.last_finger_time).nanoseconds / 1e9
+            if time_since_last_finger_detection > self.gesture_timeout:
                 self.current_hand_finger = None
                 self.last_finger_time = None
                 self.finger_start_time = None  # Reset duration tracking
@@ -152,8 +165,8 @@ class SensorFusion(Node):
         
         # Clear thumbs_up if timeout
         if self.last_thumbs_up_time:
-            age = (now - self.last_thumbs_up_time).nanoseconds / 1e9
-            if age > self.gesture_timeout:
+            time_since_last_thumbs_up_detection = (now - self.last_thumbs_up_time).nanoseconds / 1e9
+            if time_since_last_thumbs_up_detection > self.gesture_timeout:
                 self.current_hand_thumbs_up = None
                 self.last_thumbs_up_time = None
                 self.thumbs_up_start_time = None  # Reset duration tracking
@@ -178,88 +191,61 @@ class SensorFusion(Node):
     
     def process_and_publish(self):
         """Haupt-Logik: Fused Data verarbeiten und publizieren"""
-        if self.current_detections is None:
-            return  # Warten bis alle Daten verfügbar sind
-        
-        current_time = self.get_clock().now()
-        result_action_id = None  # No action by default - don't publish idle
-        result_user_id = self.user_id if self.user_id != -1 else None
-        
-        # Check for thumbs up gesture (overrides everything)
-        if self.current_hand_thumbs_up and self.thumbs_up_start_time is not None:
-            # Reset finger timer if thumbs up is detected (thumbs up has priority)
-            if self.finger_start_time is not None:
-                self.finger_start_time = None
-                self.get_logger().debug('👍 Thumbs up detected - resetting finger timer')
-            
-            # Check if thumbs up has been held for at least 3 seconds
-            duration = (current_time - self.thumbs_up_start_time).nanoseconds / 1e9
-            if duration >= self.gesture_duration_required:
-                result_action_id = "sit"
-                if self.last_published_action != "sit":
-                    self.get_logger().info(
-                        f'👍 THUMBS UP held for {duration:.1f}s → action_id=SIT (publishing)'
-                    )
-            else:
-                # Still counting duration
-                self.get_logger().debug(
-                    f'👍 THUMBS UP detected - duration: {duration:.1f}s / {self.gesture_duration_required}s'
-                )
-        
-        # Check if hand finger is detected (only if not thumbs up)
-        elif self.current_hand_finger and self.finger_start_time is not None:
-            finger_x = self.current_hand_finger.point.x
-            finger_y = self.current_hand_finger.point.y
-            
-            # Check if finger is inside any detection bounding box
-            finger_pointing_at_person = False
-            detected_person_id = None
-            for detection in self.current_detections.detections:
-                if self.is_point_in_bbox(finger_x, finger_y, detection):
-                    finger_pointing_at_person = True
-                    detected_person_id = detection.id
-                    # Use YOLO tracking ID as user_id
-                    if detection.id != "":
+        now = self.get_clock().now()
+        result_action = None
+
+        #voice command check
+        if hasattr(self, 'current_voice_command') and self.current_voice_command:
+            cmd = str(self.current_voice_command).strip().lower()
+            if cmd in ('sitz', 'sit', ):
+                result_action = "SIT"
+            elif cmd in ('auf', 'up'):
+                result_action = "UP"
+
+        #thumbs up check
+        if result_action is None and self.current_hand_thumbs_up is not None and self.thumbs_up_start_time is not None:
+            thumbs_duration = (now - self.thumbs_up_start_time).nanoseconds / 1e9
+            if thumbs_duration >= self.gesture_duration_required:
+                result_action = "STOP_FOLLOWING"
+
+        #finger pointing check
+        if result_action is None and self.current_hand_finger is not None and self.finger_start_time is not None:
+            finger_duration = (now - self.finger_start_time).nanoseconds / 1e9
+            if finger_duration >= self.gesture_duration_required and self.current_detections is not None:
+                # PointStamped: .point.x / .point.y erwartet
+                try:
+                    px = self.current_hand_finger.point.x
+                    py = self.current_hand_finger.point.y
+                except Exception:
+                    px = None
+                    py = None
+
+                if px is not None and py is not None:
+                    for det in self.current_detections.detections:
                         try:
-                            result_user_id = int(detection.id)
-                        except ValueError:
-                            result_user_id = None
-                    break
-            
-            if finger_pointing_at_person:
-                # Check if finger pointing has been held for at least 3 seconds
-                duration = (current_time - self.finger_start_time).nanoseconds / 1e9
-                if duration >= self.gesture_duration_required:
-                    result_action_id = "follow"
-                    if self.last_published_action != "follow":
-                        self.get_logger().info(
-                            f'✅ ACTION=FOLLOW: Zeigefinger zeigt auf Person für {duration:.1f}s '
-                            f'(Tracking ID={detected_person_id}, User={result_user_id})'
-                        )
-                else:
-                    # Still counting duration
-                    self.get_logger().debug(
-                        f'👆 Finger pointing at person - duration: {duration:.1f}s / {self.gesture_duration_required}s'
-                    )
-            else:
-                # Finger detected but not pointing at person - reset timer
-                self.finger_start_time = None
+                            if self.is_point_in_bbox(px, py, det):
+                                result_action = "FOLLOW"
+                                break
+                        except Exception:
+                            # robust gegen fehlerhafte Detections-Felder
+                            continue
         
-        # Only publish if we have an explicit action (sit or follow) that was held for 3+ seconds
-        # Do NOT publish "idle" - that's only done by sit_node after 10 seconds
-        if result_action_id is None:
-            # No explicit action detected or gesture not held long enough - don't publish anything
-            # State machine will keep current state
+        if result_action is None:
             return
-        
-        # Create fused detection message only if we have an explicit action held for 3+ seconds
-        fused_detection = Detection2DArray()
-        fused_detection.header = self.current_detections.header
-        fused_detection.header.stamp = self.get_clock().now().to_msg()
-        
-        # Log fusion summary
-        detected_count = len(self.current_detections.detections)
-        
+
+        if result_action != self.last_published_action:
+            out = RosString()
+            out.data = result_action
+            self.fusion_pub.publish(out)
+            self.last_published_action = result_action
+
+
+    def check_if_action_publishing_not_needed(self, result_action_id):
+        """Check if action needs to be published based on current gestures and durations"""
+        return result_action_id is None
+
+    def create_log_for_action(self, result_action_id, detected_count, result_user_id):
+        """Create log message for the current action"""
         if result_action_id == "sit":
             self.get_logger().info(
                 f'🔀 FUSION: {detected_count} detections, '
@@ -270,40 +256,7 @@ class SensorFusion(Node):
                 f'🔀 FUSION: {detected_count} detections, '
                 f'Finger pointing held for 3+ seconds, Action={result_action_id}, User={result_user_id}'
             )
-        
-        # Copy detections from YOLO and add metadata
-        for detection in self.current_detections.detections:
-            # Copy detection to avoid modifying original
-            new_detection = deepcopy(detection)
-            
-            # Override detection ID with action_id and user_id
-            # Format: "action_id:user_id" or "action_id" if no user_id
-            if result_user_id is not None:
-                new_detection.id = f"{result_action_id}:{result_user_id}"
-            else:
-                new_detection.id = result_action_id
-            
-            # Add to fused output
-            fused_detection.detections.append(new_detection)
-        
-        # Publish fused data (only if we have an explicit action held for 3+ seconds)
-        self.fusion_pub.publish(fused_detection)
-        self.last_published_action = result_action_id  # Track published action
     
-    def create_fusion_summary(self):
-        """Erstellt eine Zusammenfassung der fused Daten"""
-        summary = {
-            'action_id': self.action_id,
-            'user_id': self.user_id,
-            'timestamp': self.get_clock().now(),
-            'yolo_detections': len(self.current_detections.detections) if self.current_detections else 0,
-            'hand_finger_detected': self.current_hand_finger is not None,
-            'hand_position': {
-                'x': self.current_hand_finger.point.x if self.current_hand_finger else None,
-                'y': self.current_hand_finger.point.y if self.current_hand_finger else None,
-            }
-        }
-        return summary
 
 def main(args=None):
     rclpy.init(args=args)

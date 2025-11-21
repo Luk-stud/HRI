@@ -1,0 +1,21 @@
+digraph StateMachine {
+    rankdir=LR;
+    size="8,4";
+    node [shape=circle, style=filled, fontname="Arial"];
+
+    // States
+    IDLE [label="IDLE", shape=doublecircle, fillcolor=lightgray];
+    SIT [label="SIT", fillcolor=lightblue];
+    FOLLOW [label="FOLLOW", fillcolor=lightgreen];
+
+    // Transitions (labels are incoming fusion action strings)
+    IDLE -> FOLLOW [label="FOLLOW", fontname="Arial"];
+    IDLE -> SIT [label="SIT", fontname="Arial"];
+    FOLLOW -> IDLE [label="STOP_FOLLOWING", fontname="Arial"];
+    SIT -> IDLE [label="UP", fontname="Arial"];
+
+    // Title
+    labelloc="t";
+    label="State Machine — IDLE / SIT / FOLLOW\n(Transitions triggered by fusion actions: FOLLOW, STOP_FOLLOWING, SIT, UP)";
+    fontsize=12;
+}

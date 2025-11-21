@@ -24,8 +24,9 @@ setup(
         'sensor_fusion = polygon_nav.sensor_fusion:main',
         'state_machine = polygon_nav.state_machine:main',
         'follow_node = polygon_nav.follow_node:main',
-        'sit_node = polygon_nav.sit_node:main',
         'vosk_voice_assistant = polygon_nav.vosk_mic_listener.mic_node:main',
+        'pose_control = polygon_nav.pose_control:main',
+
     ],
 },
 )
