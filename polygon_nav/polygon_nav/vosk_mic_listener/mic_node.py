@@ -44,6 +44,7 @@ class VoskMicNode(Node):
             self.get_logger().info("Free speech mode enabled (no grammar)")
             self.recognizer = KaldiRecognizer(model, self.sample_rate)
 
+        # HIER MUSS ROSSTRING SEIN FABIAN
         self.command_pub = self.create_publisher(String, "/voice_commands", 10)
 
         self.mic = pyaudio.PyAudio()
