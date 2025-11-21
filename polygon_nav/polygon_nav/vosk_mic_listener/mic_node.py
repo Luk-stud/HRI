@@ -1,5 +1,5 @@
 import json
-from pathlib import Path
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -7,42 +7,50 @@ from std_msgs.msg import String
 import pyaudio
 from vosk import Model, KaldiRecognizer
 
+from .config import (
+    MODEL_PATH,
+    SAMPLE_RATE,
+    DEVICE_PREFERRED_NAME,
+    WAKE_WORDS,
+    COMMANDS_AFTER_WAKE,
+    GRAMMAR,
+)
+
 
 class VoskMicNode(Node):
     def __init__(self):
         super().__init__("vosk_mic_node")
 
-        default_model_path = "/home/user/ROS2/polygon_nav/polygon_nav/vosk_mic_listener/model/vosk-model-de-0.21"
+        self.awaiting_command = False
 
-        self.declare_parameter("model_path", default_model_path)
-        self.declare_parameter("sample_rate", 16000.0)
-        self.declare_parameter("grammar", [])
+        self.declare_parameter("model_path", MODEL_PATH)
+        self.declare_parameter("sample_rate", SAMPLE_RATE)
+        self.declare_parameter("grammar", GRAMMAR)
 
         model_path = self.get_parameter("model_path").value
         sample_rate = self.get_parameter("sample_rate").value
         grammar_list = self.get_parameter("grammar").value
 
+        self.sample_rate = int(sample_rate)
+
         self.get_logger().info(f"Loading Vosk model from: {model_path}")
         model = Model(model_path)
 
         if grammar_list:
-            grammar_json = json.dumps(grammar_list)
-            self.recognizer = KaldiRecognizer(model, sample_rate, grammar_json)
+            grammar_json = json.dumps(grammar_list, ensure_ascii=False)
             self.get_logger().info(f"Using grammar: {grammar_json}")
+            self.recognizer = KaldiRecognizer(model, self.sample_rate, grammar_json)
         else:
-            self.recognizer = KaldiRecognizer(model, sample_rate)
-            self.get_logger().info("Free speech mode enabled")
+            self.get_logger().info("Free speech mode enabled (no grammar)")
+            self.recognizer = KaldiRecognizer(model, self.sample_rate)
 
         self.command_pub = self.create_publisher(String, "/voice_commands", 10)
 
-        self.sample_rate = int(sample_rate)
         self.mic = pyaudio.PyAudio()
 
         self.get_logger().info("Available audio devices:")
-        input_device_index = None
-        input_device_info = None
-
-        preferred_name = "Samson Q2U"
+        device_index = None
+        preferred_lower = DEVICE_PREFERRED_NAME.lower()
 
         for i in range(self.mic.get_device_count()):
             info = self.mic.get_device_info_by_index(i)
@@ -50,32 +58,28 @@ class VoskMicNode(Node):
             max_in = info.get("maxInputChannels", 0)
             self.get_logger().info(f"  {i}: {name} (maxInputChannels={max_in})")
 
-            if max_in > 0 and preferred_name.lower() in name.lower():
-                input_device_index = i
-                input_device_info = info
-                break
+            if max_in > 0 and preferred_lower in name.lower():
+                device_index = i
 
-        if input_device_index is None:
+        if device_index is None:
             for i in range(self.mic.get_device_count()):
                 info = self.mic.get_device_info_by_index(i)
-                name = info.get("name", "unknown")
                 max_in = info.get("maxInputChannels", 0)
                 if max_in > 0:
-                    input_device_index = i
-                    input_device_info = info
+                    device_index = i
                     break
 
-        if input_device_index is None:
-            raise RuntimeError("No input audio device found in container")
+        if device_index is None:
+            raise RuntimeError("No input audio device found")
 
-        self.get_logger().info(f"Using input device index: {input_device_index}")
+        self.get_logger().info(f"Using input device index: {device_index}")
 
         self.stream = self.mic.open(
             format=pyaudio.paInt16,
             channels=1,
             rate=self.sample_rate,
             input=True,
-            input_device_index=input_device_index,
+            input_device_index=device_index,
             frames_per_buffer=4000,
         )
         self.stream.start_stream()
@@ -91,44 +95,61 @@ class VoskMicNode(Node):
         if len(data) == 0:
             return
 
-        self.get_logger().info(f"Audio chunk received: {len(data)} bytes")
-
         if self.recognizer.AcceptWaveform(data):
             result = self.recognizer.Result()
-            self.get_logger().info(f"Final: {result}")
+            self.get_logger().info(f"Final raw result: {result}")
 
             try:
                 res = json.loads(result)
             except json.JSONDecodeError:
+                self.get_logger().warn("Failed to parse recognizer result")
                 return
 
-            text = res.get("text", "").strip()
+            text = res.get("text", "").strip().lower()
             if text:
-                msg = String()
-                msg.data = text
-                self.command_pub.publish(msg)
-                self.handle_command(text)
+                self.get_logger().info(f"Recognized text: '{text}'")
+                self.handle_text(text)
         else:
             partial = self.recognizer.PartialResult()
             self.get_logger().info(f"Partial: {partial}")
 
-    def handle_command(self, text: str):
-        if "bello" in text:
-            self.get_logger().info("Bello wurde gerufen")
-        if "sitz" in text:
-            self.get_logger().info("Bello macht sitz!")
-        if "platz" in text:
-            self.get_logger().info("Bello macht platz!")
-        if "beifuß" in text or "bei fuß" in text:
-            self.get_logger().info("Bello geht bei Fuß!")
+    def handle_text(self, text: str):
+        # Check for wake word
+        if any(w in text for w in WAKE_WORDS):
+            self.awaiting_command = True
+            self.get_logger().info(f"Wake word detected in: '{text}'")
+            return
+
+        if self.awaiting_command:
+            for cmd_phrase, info in COMMANDS_AFTER_WAKE.items():
+                if cmd_phrase in text:
+                    publish_value = info.get("publish", cmd_phrase)
+                    log_msg = info.get("log", f"Command: {cmd_phrase}")
+
+                    self.get_logger().info(f"Command sequence detected: '{cmd_phrase}'")
+                    self.get_logger().info(log_msg)
+
+                    msg = String()
+                    msg.data = publish_value
+                    self.command_pub.publish(msg)
+
+                    self.awaiting_command = False
+                    return
+
+            self.get_logger().info(f"Unknown command after wake word: '{text}'")
+            self.awaiting_command = False
+        else:
+            self.get_logger().info(f"Ignoring text without wake word: '{text}'")
 
     def destroy_node(self):
         try:
-            self.stream.stop_stream()
-            self.stream.close()
-            self.mic.terminate()
-        except:
-            pass
+            if self.stream is not None:
+                self.stream.stop_stream()
+                self.stream.close()
+            if self.mic is not None:
+                self.mic.terminate()
+        except Exception as e:
+            self.get_logger().warn(f"Error while closing audio: {e}")
         super().destroy_node()
 
 
