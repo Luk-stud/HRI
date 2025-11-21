@@ -23,7 +23,7 @@ setup(
         'hand_gesture_detector = polygon_nav.hand_gesture_detector:main',
         'sensor_fusion = polygon_nav.sensor_fusion:main',
         'state_machine = polygon_nav.state_machine:main',
-        'follow_node = polygon_nav.follow_node:main',
+        'follower_control = polygon_nav.follower_control:main',
         'vosk_voice_assistant = polygon_nav.vosk_mic_listener.mic_node:main',
         'pose_control = polygon_nav.pose_control:main',
 
