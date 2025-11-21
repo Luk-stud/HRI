@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # sit_node.py
-# Controls robot to sit position when sit state is received using ROS2 SetMode service
+# Controls robot to sit position when sit state is received
+# Uses SportClient SDK if available, otherwise falls back to ROS2 SetMode service
 
 import rclpy
 from rclpy.node import Node
@@ -10,18 +11,79 @@ from std_msgs.msg import Header
 from go1_legged_msgs.srv import SetMode
 import time
 
+# Try to import robot_interface from Unitree SDK
+SDK_AVAILABLE = False
+sdk = None
+
+try:
+    import sys
+    import os
+    # Add SDK Python library path
+    sdk_path = os.path.join(os.path.expanduser('~'), 'ROS2', 'unitree_legged_sdk', 'lib', 'python', 'amd64')
+    if os.path.exists(sdk_path):
+        sys.path.append(sdk_path)
+        import robot_interface as sdk
+        SDK_AVAILABLE = True
+    else:
+        # Try arm64 path
+        sdk_path = os.path.join(os.path.expanduser('~'), 'ROS2', 'unitree_legged_sdk', 'lib', 'python', 'arm64')
+        if os.path.exists(sdk_path):
+            sys.path.append(sdk_path)
+            import robot_interface as sdk
+            SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
+except Exception as e:
+    SDK_AVAILABLE = False
+
 class SitNode(Node):
     def __init__(self):
         super().__init__('sit_node')
         
-        # Service client for SetMode (uses go1_legged_msgs - already available as dependency)
-        self.set_mode_client = self.create_client(SetMode, '/set_mode')
+        # Try to initialize SDK if available
+        self.sdk_udp = None
+        self.sdk_cmd = None
+        self.sdk_state = None
+        self.use_sdk = False
         
-        # Wait for service to be available
-        while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('⏳ Waiting for /set_mode service...')
+        if SDK_AVAILABLE and sdk is not None:
+            try:
+                # Initialize SDK UDP connection
+                HIGHLEVEL = 0xee
+                # Default robot IP (can be configured via parameter)
+                robot_ip = self.declare_parameter('robot_ip', '192.168.123.161').value
+                self.sdk_udp = sdk.UDP(HIGHLEVEL, 8080, robot_ip, 8082)
+                self.sdk_cmd = sdk.HighCmd()
+                self.sdk_state = sdk.HighState()
+                self.sdk_udp.InitCmdData(self.sdk_cmd)
+                
+                # Initialize command with default values
+                self.sdk_cmd.mode = 0  # idle, default stand
+                self.sdk_cmd.gaitType = 0
+                self.sdk_cmd.speedLevel = 0
+                self.sdk_cmd.footRaiseHeight = 0
+                self.sdk_cmd.bodyHeight = 0
+                self.sdk_cmd.euler = [0, 0, 0]
+                self.sdk_cmd.velocity = [0, 0]
+                self.sdk_cmd.yawSpeed = 0.0
+                self.sdk_cmd.reserve = 0
+                
+                self.use_sdk = True
+                self.get_logger().info(f'✅ Unitree SDK initialized - using SDK for robot control (IP: {robot_ip})')
+            except Exception as e:
+                self.get_logger().warn(f'⚠️ Failed to initialize SDK: {e} - falling back to ROS2 Service')
+                self.use_sdk = False
         
-        self.get_logger().info('✅ SetMode service client initialized')
+        # Service client for SetMode (fallback if SDK not available)
+        self.set_mode_client = None
+        if not self.use_sdk:
+            self.set_mode_client = self.create_client(SetMode, '/set_mode')
+            
+            # Wait for service to be available
+            while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
+                self.get_logger().warn('⏳ Waiting for /set_mode service...')
+            
+            self.get_logger().info('✅ SetMode service client initialized (fallback mode)')
         
         # Subscriber for state machine output
         self.state_sub = self.create_subscription(
@@ -55,10 +117,17 @@ class SitNode(Node):
         # Timer for periodic checking and idle state publishing
         self.timer = self.create_timer(0.1, self.timer_callback)  # 10 Hz
         
+        # Timer for SDK command sending (SDK requires continuous commands)
+        if self.use_sdk:
+            self.sdk_timer = self.create_timer(0.002, self.sdk_timer_callback)  # 500 Hz (as per SDK examples)
+        
         self.get_logger().info('🤖 Sit Node gestartet ✅')
         self.get_logger().info('Subscribed to: /state_machine_out')
         self.get_logger().info('Publishing to: /fusion_out (for idle state)')
-        self.get_logger().info('Using ROS2 Service: /set_mode (mode 5=sit, mode 6=stand)')
+        if self.use_sdk:
+            self.get_logger().info('Using: Unitree SDK (robot_interface - cmd.mode)')
+        else:
+            self.get_logger().info('Using: ROS2 Service /set_mode (mode 5=sit, mode 6=stand)')
     
     def state_callback(self, msg):
         """Process state machine output"""
@@ -84,8 +153,8 @@ class SitNode(Node):
                 self.should_publish_idle = False  # Reset idle flag for new sit cycle
                 self.idle_publish_count = 0  # Reset counter
                 
-                # Call SetMode service with mode 5 (position stand down / sit)
-                self.call_set_mode(5)
+                # Call sit command (SDK or Service)
+                self.execute_sit()
             # else: already sitting, just update time tracking
         elif state == "idle" and self.should_publish_idle:
             # State machine has transitioned to idle, stop publishing idle
@@ -100,6 +169,19 @@ class SitNode(Node):
             self.should_publish_idle = False
             self.idle_publish_count = 0
     
+    def sdk_timer_callback(self):
+        """Periodic callback to send SDK commands (SDK requires continuous command stream)"""
+        if self.use_sdk and self.sdk_udp is not None and self.sdk_cmd is not None:
+            try:
+                # Receive state (non-blocking)
+                self.sdk_udp.Recv()
+                # Send command
+                self.sdk_udp.SetSend(self.sdk_cmd)
+                self.sdk_udp.Send()
+            except Exception as e:
+                # Only log errors occasionally to avoid spam
+                pass
+    
     def timer_callback(self):
         """Periodic callback to check sit duration and publish idle state"""
         current_time = self.get_clock().now()
@@ -109,9 +191,13 @@ class SitNode(Node):
         if self.pending_mode_0_call and self.mode_0_call_time is not None:
             elapsed = (current_time - self.mode_0_call_time).nanoseconds / 1e9
             if elapsed >= self.mode_0_delay:
-                self.get_logger().info('📞 Calling SetMode mode=0 (idle/default stand - normal operation)')
-                # Use async for mode 0 as well - more reliable
-                self.call_set_mode(0, wait_for_result=False)  # mode 0 = idle, default stand (normal operation)
+                if self.use_sdk:
+                    self.get_logger().info('📞 Calling SDK mode=0 (idle/default stand - normal operation)')
+                    self.execute_idle()
+                else:
+                    self.get_logger().info('📞 Calling SetMode mode=0 (idle/default stand - normal operation)')
+                    # Use async for mode 0 as well - more reliable
+                    self.call_set_mode(0, wait_for_result=False)  # mode 0 = idle, default stand (normal operation)
                 self.pending_mode_0_call = False
                 self.mode_0_call_time = None
                 self.mode_0_delay = 2.0  # Reset delay
@@ -138,6 +224,48 @@ class SitNode(Node):
             # Stop publishing after max attempts
             self.should_publish_idle = False
             self.get_logger().warn('⚠️ Stopped publishing idle after max attempts')
+    
+    def execute_sit(self):
+        """Execute sit command using SDK or Service"""
+        if self.use_sdk and self.sdk_udp is not None and self.sdk_cmd is not None:
+            try:
+                # Set mode to 5 (sit)
+                self.sdk_cmd.mode = 5
+                self.sdk_udp.SetSend(self.sdk_cmd)
+                self.sdk_udp.Send()
+                self.get_logger().info('✅ Called SDK: cmd.mode = 5 (sit)')
+            except Exception as e:
+                self.get_logger().error(f'❌ Error calling SDK sit: {e}')
+        else:
+            # Fallback to ROS2 Service
+            self.call_set_mode(5)
+    
+    def execute_stand(self):
+        """Execute stand up command using SDK or Service"""
+        if self.use_sdk and self.sdk_udp is not None and self.sdk_cmd is not None:
+            try:
+                # Set mode to 6 (stand up)
+                self.sdk_cmd.mode = 6
+                self.sdk_udp.SetSend(self.sdk_cmd)
+                self.sdk_udp.Send()
+                self.get_logger().info('✅ Called SDK: cmd.mode = 6 (stand up)')
+            except Exception as e:
+                self.get_logger().error(f'❌ Error calling SDK stand: {e}')
+        else:
+            # Fallback to ROS2 Service
+            self.call_set_mode(6, wait_for_result=False)
+    
+    def execute_idle(self):
+        """Execute idle command using SDK (return to normal operation)"""
+        if self.use_sdk and self.sdk_udp is not None and self.sdk_cmd is not None:
+            try:
+                # Set mode to 0 (idle, default stand)
+                self.sdk_cmd.mode = 0
+                self.sdk_udp.SetSend(self.sdk_cmd)
+                self.sdk_udp.Send()
+                self.get_logger().info('✅ Called SDK: cmd.mode = 0 (idle)')
+            except Exception as e:
+                self.get_logger().error(f'❌ Error calling SDK idle: {e}')
     
     def call_set_mode(self, mode, gait_type=0, wait_for_result=False):
         """
@@ -187,24 +315,36 @@ class SitNode(Node):
         return future
     
     def return_to_normal(self):
-        """Return robot to normal standing position using SetMode service"""
+        """Return robot to normal standing position"""
         self.get_logger().info('🔄 Starting return to normal sequence...')
         
-        # First stand up (mode 6 = position stand up)
-        # Use async call - even if service doesn't respond, the command is sent
-        self.call_set_mode(6, wait_for_result=False)
-        self.get_logger().info('📞 Sent SetMode mode=6 (stand up) - async')
-        
-        # Small delay to let stand up complete (using ROS2 timer instead of blocking sleep)
-        # We'll use a flag and timer callback to handle the second call
-        self.pending_mode_0_call = True
-        self.mode_0_call_time = self.get_clock().now()
-        # Increase delay to 2 seconds to give robot time to stand up
-        self.mode_0_delay = 2.0
-        
-        self.is_sitting = False
-        self.sit_start_time = None
-        self.get_logger().info('✅ Initiated return to normal position (mode 6 sent, mode 0 will follow in 2s)')
+        if self.use_sdk:
+            # Using SDK - first stand up, then set to idle
+            self.execute_stand()
+            # Schedule idle mode call after delay (using timer callback)
+            self.pending_mode_0_call = True
+            self.mode_0_call_time = self.get_clock().now()
+            self.mode_0_delay = 2.0  # 2 seconds delay after stand up
+            self.is_sitting = False
+            self.sit_start_time = None
+            self.get_logger().info('✅ Initiated return to normal position (using SDK - mode 6 sent, mode 0 will follow)')
+        else:
+            # Using ROS2 Service - need mode 6 then mode 0
+            # First stand up (mode 6 = position stand up)
+            # Use async call - even if service doesn't respond, the command is sent
+            self.call_set_mode(6, wait_for_result=False)
+            self.get_logger().info('📞 Sent SetMode mode=6 (stand up) - async')
+            
+            # Small delay to let stand up complete (using ROS2 timer instead of blocking sleep)
+            # We'll use a flag and timer callback to handle the second call
+            self.pending_mode_0_call = True
+            self.mode_0_call_time = self.get_clock().now()
+            # Increase delay to 2 seconds to give robot time to stand up
+            self.mode_0_delay = 2.0
+            
+            self.is_sitting = False
+            self.sit_start_time = None
+            self.get_logger().info('✅ Initiated return to normal position (mode 6 sent, mode 0 will follow in 2s)')
     
     def publish_idle_state(self):
         """Publish idle state to /fusion_out to trigger state machine transition"""
