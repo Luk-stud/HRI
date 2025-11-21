@@ -77,6 +77,14 @@ class SensorFusion(Node):
             10  # Queue size 10
         )
 
+        # Subscribe to state machine to reset tracked_person_id when state changes to IDLE
+        self.state_machine_sub = self.create_subscription(
+            RosString,
+            '/state_machine_out',
+            self.state_machine_callback,
+            10
+        )
+
         # Publisher
         self.fusion_pub = self.create_publisher(
             RosString,
@@ -95,7 +103,8 @@ class SensorFusion(Node):
 
         
         # Timer to clear old gestures (1 Hz)
-        self.gesture_timeout = 0.3  # Clear gestures after 0.3 seconds
+        self.gesture_timeout = 1.0  # Clear gestures after 1.0 seconds (allows for gaps in detection)
+        self.finger_timeout = 1.5  # Longer timeout for finger gestures to allow accumulation of duration
         self.last_finger_time = None #time when finger was detected last time
         self.last_thumbs_up_time = None #time when thumbs up was detected last time
         self.create_timer(0.5, self.gesture_timeout_callback) # timer um 
@@ -153,8 +162,10 @@ class SensorFusion(Node):
                     output_point.point.x = det.bbox.center.position.x
                     output_point.point.y = det.bbox.size_y  # box_height
                     self.target_person_pub.publish(output_point)
+                    self.get_logger().debug(f'📤 Published target_person: center_x={output_point.point.x:.1f}, height={output_point.point.y:.1f} (ID: {self.tracked_person_id})')
                     return
             # Wenn ID nicht mehr vorhanden ist, zurücksetzen
+            self.get_logger().info(f'⚠️ Tracked person ID {self.tracked_person_id} not found in detections, resetting')
             self.tracked_person_id = None
         
         # Prüfen ob thumbs_up oder pointer_finger Koordinaten vorhanden sind
@@ -198,7 +209,15 @@ class SensorFusion(Node):
         """Callback für Sprachbefehle"""
         self.current_voice_command = msg.data
         self.get_logger().info(f'🔊 Sprachbefehl empfangen: {msg.data}')
-        self.process_and_publish()    
+        self.process_and_publish()
+    
+    def state_machine_callback(self, msg):
+        """Callback für State Machine Updates - reset tracked_person_id wenn State zu IDLE wechselt"""
+        current_state = msg.data.strip().upper() if msg.data else ""
+        # Wenn State von FOLLOW zu IDLE wechselt, ID zurücksetzen
+        if current_state == 'IDLE' and self.tracked_person_id is not None:
+            self.get_logger().info(f'🛑 State changed to IDLE - Person ID {self.tracked_person_id} wird zurückgesetzt')
+            self.tracked_person_id = None    
     
     def yolo_image_callback(self, msg):
         """Callback für YOLO verarbeitetes Bild"""
@@ -243,7 +262,7 @@ class SensorFusion(Node):
         # Clear finger if timeout
         if self.last_finger_time:
             time_since_last_finger_detection = (now - self.last_finger_time).nanoseconds / 1e9
-            if time_since_last_finger_detection > self.gesture_timeout:
+            if time_since_last_finger_detection > self.finger_timeout:
                 self.current_hand_finger = None
                 self.last_finger_time = None
                 self.finger_start_time = None  # Reset duration tracking
@@ -293,28 +312,54 @@ class SensorFusion(Node):
             thumbs_duration = (now - self.thumbs_up_start_time).nanoseconds / 1e9
             if thumbs_duration >= self.gesture_duration_required:
                 result_action = "STOP_FOLLOWING"
+                # ID zurücksetzen wenn STOP_FOLLOWING ausgelöst wird
+                if self.tracked_person_id is not None:
+                    self.get_logger().info(f'🛑 STOP_FOLLOWING: Person ID {self.tracked_person_id} wird zurückgesetzt')
+                    self.tracked_person_id = None
 
         #finger pointing check
         if result_action is None and self.current_hand_finger is not None and self.finger_start_time is not None:
             finger_duration = (now - self.finger_start_time).nanoseconds / 1e9
+            self.get_logger().debug(f'👆 Finger gesture duration: {finger_duration:.2f}s (required: {self.gesture_duration_required}s)')
+            
             if finger_duration >= self.gesture_duration_required and self.current_detections is not None:
                 # PointStamped: .point.x / .point.y erwartet
                 try:
                     px = self.current_hand_finger.point.x
                     py = self.current_hand_finger.point.y
+                    self.get_logger().debug(f'👆 Finger point: ({px:.1f}, {py:.1f})')
                 except Exception:
                     px = None
                     py = None
+                    self.get_logger().warn('👆 Failed to extract finger coordinates')
 
                 if px is not None and py is not None:
+                    found_in_bbox = False
                     for det in self.current_detections.detections:
                         try:
                             if self.is_point_in_bbox(px, py, det):
+                                found_in_bbox = True
                                 result_action = "FOLLOW"
+                                # ID speichern, damit nachfolgend nur noch diese ID verwendet wird
+                                if hasattr(det, 'id') and det.id:
+                                    self.tracked_person_id = det.id
+                                    self.get_logger().info(f'✅ FOLLOW triggered: Finger point ({px:.1f}, {py:.1f}) in bbox of detection {det.id}. Person ID {self.tracked_person_id} wird jetzt getrackt.')
+                                else:
+                                    self.get_logger().warn('⚠️ FOLLOW triggered but detection has no ID')
                                 break
-                        except Exception:
+                        except Exception as e:
                             # robust gegen fehlerhafte Detections-Felder
+                            self.get_logger().debug(f'Exception checking bbox: {e}')
                             continue
+                    
+                    if not found_in_bbox:
+                        self.get_logger().debug(f'👆 Finger point ({px:.1f}, {py:.1f}) not in any detection bbox. Detections: {len(self.current_detections.detections)}')
+                else:
+                    self.get_logger().debug('👆 Finger coordinates are None')
+            elif self.current_detections is None:
+                self.get_logger().debug('👆 No detections available yet')
+            else:
+                self.get_logger().debug(f'👆 Finger duration not yet reached: {finger_duration:.2f}s < {self.gesture_duration_required}s')
         
         if result_action is None:
             return

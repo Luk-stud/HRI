@@ -20,6 +20,10 @@ COMMANDS_AFTER_WAKE = {
         "publish": "dog_down",
         "log": "Snoopy macht platz!",
     },
+    "auf": {
+        "publish": "dog_up",
+        "log": "Snoopy macht auf!",
+    },
     "beifuß": {
         "publish": "dog_heel",
         "log": "Snoopy geht bei Fuß!",

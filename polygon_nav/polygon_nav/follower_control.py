@@ -17,9 +17,9 @@ class FollowerControlSkill(Node):
         self.camera_width = 640.0
         self.desired_box_height = 300.0
         self.max_linear_speed = 0.4
-        self.max_angular_speed = 1.0
+        self.max_angular_speed = 1
         self.kp_linear = 0.003
-        self.kp_angular = 0.004
+        self.kp_angular = 0.002
         
         self.image_center_x = self.camera_width / 2.0
         self.is_active = False
@@ -27,7 +27,15 @@ class FollowerControlSkill(Node):
         # ROS interfaces
         self.create_subscription(String, '/state_machine_out', self.state_callback, 10)
         self.create_subscription(PointStamped, '/human_tracker/target_person', self.target_callback, 10)
-        should_be_active = (msg.data == 'FOLLOWING')
+        
+        self.vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        
+        self.get_logger().info("Follower Control Skill ready.")
+        
+    def state_callback(self, msg: String):
+        """Activates or deactivates this skill based on the brain's command."""
+        state = msg.data.strip().upper() if msg.data else ""
+        should_be_active = (state == 'FOLLOW')
         
         if should_be_active and not self.is_active:
             self.get_logger().info("ACTIVATING person following skill.")
@@ -39,10 +47,12 @@ class FollowerControlSkill(Node):
     def target_callback(self, msg: PointStamped):
         """Calculates and publishes velocity commands based on target position."""
         if not self.is_active:
+            self.get_logger().debug("Target received but follower is not active")
             return
 
         center_x = msg.point.x
         box_height = msg.point.y
+        self.get_logger().debug(f"Target received: center_x={center_x:.1f}, box_height={box_height:.1f}")
         
         error_distance = self.desired_box_height - box_height
         error_angle = self.image_center_x - center_x

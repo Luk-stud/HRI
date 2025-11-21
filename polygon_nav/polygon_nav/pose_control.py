@@ -151,14 +151,25 @@ class PoseControlSkill(Node):
 
     def animation_step_callback(self):
         """Callback for the animation timer, publishes one pose frame."""
+        # Wenn keine Animation läuft, aber State SIT aktiv ist, Pose kontinuierlich halten
         if not self.animation_sequence:
+            if self.active_state == 'SIT':
+                pose_msg = DesiredPose()
+                pose_msg.roll, pose_msg.pitch, pose_msg.yaw, pose_msg.body_height = self.current_pose
+                self.pose_publisher.publish(pose_msg)
             return
 
         if self.animation_index >= len(self.animation_sequence):
             if self.loop_animation:
                 self.animation_index = 0
             else:
-                self.animation_timer.cancel()
+                # Animation fertig: Wenn State SIT, Pose weiterhin halten
+                if self.active_state == 'SIT':
+                    # Leere Sequenz, damit der Timer weiterläuft und Pose hält
+                    self.animation_sequence = []
+                    self.animation_index = 0
+                else:
+                    self.animation_timer.cancel()
                 return
         
         pose_values = self.animation_sequence[self.animation_index]

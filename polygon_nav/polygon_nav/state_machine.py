@@ -50,6 +50,8 @@ class StateMachine(Node):
         self.get_logger().info('Subscribed to: /fusion_out')
         self.get_logger().info('Publishing to: /state_machine_out')
         self.log_state()
+        # Publish initial state
+        self.publish_state()
     
     def fusion_callback(self, msg):
         """Process fusion output and transition states"""

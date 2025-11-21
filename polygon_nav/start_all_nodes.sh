@@ -24,13 +24,6 @@ source "$WORKSPACE_ROOT/install/setup.bash"
 SCRIPT_DIR="/home/user/ROS2/polygon_nav"
 cd "$SCRIPT_DIR"
 
-# 4. Start all nodes
-for node in $NODES; do
-    echo "▶ Starting: ros2 run polygon_nav $node"
-    ros2 run polygon_nav $node &
-done
-
-
 NODES=$(python3 << 'PYTHON_EOF'
 import re
 with open('setup.py', 'r') as f:
@@ -44,6 +37,15 @@ PYTHON_EOF
 
 echo "Found nodes: $NODES"
 echo ""
+
+# 4. Start all nodes (except vosk_voice_assistant which is started separately)
+for node in $NODES; do
+    # Skip vosk_voice_assistant as it's started separately at the end
+    if [ "$node" != "vosk_voice_assistant" ]; then
+        echo "▶ Starting: ros2 run polygon_nav $node"
+        ros2 run polygon_nav $node &
+    fi
+done
 
 
 # start the vosk voice assistant manually
