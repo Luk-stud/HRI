@@ -38,19 +38,24 @@ PYTHON_EOF
 echo "Found nodes: $NODES"
 echo ""
 
-# 4. Start all nodes (except vosk_voice_assistant which is started separately)
+
+
+# 4. Start all nodes (except vosk_voice_assistant and state_machine which are started separately)
 for node in $NODES; do
-    # Skip vosk_voice_assistant as it's started separately at the end
-    if [ "$node" != "vosk_voice_assistant" ]; then
+    # Skip vosk_voice_assistant and state_machine as they're started separately at the end
+    if [ "$node" != "vosk_voice_assistant" ] && [ "$node" != "state_machine" ]; then
         echo "▶ Starting: ros2 run polygon_nav $node"
         ros2 run polygon_nav $node &
     fi
 done
 
+sleep 5
+echo "▶ Starting: ros2 run polygon_nav state_machine"
+ros2 run polygon_nav state_machine &
 
-# start the vosk voice assistant manually
+# start the vosk voice assistant at the end
 echo "▶ Starting: ros2 run polygon_nav vosk_voice_assistant"
-ros2 run polygon_nav vosk_voice_assistant
+ros2 run polygon_nav vosk_voice_assistant &
 
 echo ""
 echo "✅ All nodes started"

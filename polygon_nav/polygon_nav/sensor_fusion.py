@@ -14,6 +14,19 @@ import cv2
 from copy import deepcopy
 from std_msgs.msg import String as RosString
 
+VOICE_ACTION_MAP = {
+    'sitz': 'SIT',
+    'dog_sit': 'SIT',
+    'platz': 'SIT',
+    'dog_down': 'SIT',
+    'auf': 'UP',
+    'up': 'UP',
+    'dog_up': 'UP',
+    'beifuß': 'FOLLOW',
+    'bei fuß': 'FOLLOW',
+    'dog_heel': 'FOLLOW',
+}
+
 class SensorFusion(Node):
     def __init__(self):
         super().__init__('sensor_fusion')
@@ -39,42 +52,42 @@ class SensorFusion(Node):
             Detection2DArray,
             '/yolo/detections',
             self.yolo_detections_callback,
-            10  # Queue size 1
+            1  # Queue size 1
         )
         
         self.yolo_image_sub = self.create_subscription(
             Image,
             '/yolo/processed_image',
             self.yolo_image_callback,
-            10  # Queue size 10
+            1  # Queue size 10
         )
         
         self.hand_finger_sub = self.create_subscription(
             PointStamped,
             '/hand/pointer_finger',
             self.hand_finger_callback,
-            10  # Queue size 10
+            1  # Queue size 10
         )
         
         self.hand_image_sub = self.create_subscription(
             Image,
             '/hand/annotated_image',
             self.hand_image_callback,
-            10  # Queue size 10
+            1  # Queue size 10
         )
         
         self.hand_thumbs_up_sub = self.create_subscription(
             PointStamped,
             '/hand/thumbs_up',
             self.hand_thumbs_up_callback,
-            10  # Queue size 10
+            1  # Queue size 10
         )
 
         self.voice_command_sub = self.create_subscription(
             RosString,
             '/voice_commands',
             self.voice_command_callback,
-            10  # Queue size 10
+            1  # Queue size 10
         )
 
         # Subscribe to state machine to reset tracked_person_id when state changes to IDLE
@@ -82,20 +95,20 @@ class SensorFusion(Node):
             RosString,
             '/state_machine_out',
             self.state_machine_callback,
-            10
+            1
         )
 
         # Publisher
         self.fusion_pub = self.create_publisher(
             RosString,
             '/fusion_out',
-            10  # Queue size 10
+            1  # Queue size 10
         )
 
         self.target_person_pub = self.create_publisher(
             PointStamped,
             '/human_tracker/target_person',
-            10
+            1
         )
 
 
@@ -300,12 +313,12 @@ class SensorFusion(Node):
         result_action = None
 
         #voice command check
-        if hasattr(self, 'current_voice_command') and self.current_voice_command:
+        if self.current_voice_command:
             cmd = str(self.current_voice_command).strip().lower()
-            if cmd in ('sitz', 'sit', 'dog_sit'):
-                result_action = "SIT"
-            elif cmd in ('auf', 'up', 'dog_up'):
-                result_action = "UP"
+            result_action = VOICE_ACTION_MAP.get(cmd)
+            if result_action:
+                # reset voice command so gestures and detections can trigger actions again
+                self.current_voice_command = None
 
         #thumbs up check
         if result_action is None and self.current_hand_thumbs_up is not None and self.thumbs_up_start_time is not None:

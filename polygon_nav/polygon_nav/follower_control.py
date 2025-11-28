@@ -17,7 +17,7 @@ class FollowerControlSkill(Node):
         self.camera_width = 640.0
         self.desired_box_height = 300.0
         self.max_linear_speed = 0.4
-        self.max_angular_speed = 1
+        self.max_angular_speed = 0.4
         self.kp_linear = 0.003
         self.kp_angular = 0.002
         
@@ -60,12 +60,13 @@ class FollowerControlSkill(Node):
         linear_vel = self.kp_linear * error_distance
         angular_vel = self.kp_angular * error_angle
 
-        linear_vel = max(min(linear_vel, self.max_linear_speed), -self.max_linear_speed)
+        # Clamp forward motion (no reversing) and limit angular speed
+        linear_vel = min(self.max_linear_speed, max(0.0, linear_vel))
         angular_vel = max(min(angular_vel, self.max_angular_speed), -self.max_angular_speed)
 
         twist = Twist()
-        twist.linear.x = linear_vel
-        twist.angular.z = angular_vel
+        twist.linear.x = float(linear_vel)
+        twist.angular.z = float(angular_vel)
         self.vel_publisher.publish(twist)
 
     def publish_stop(self):

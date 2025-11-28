@@ -7,6 +7,7 @@ from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose
 from cv_bridge import CvBridge
 from ultralytics import YOLO
+import torch
 import json
 from datetime import datetime
 
@@ -15,8 +16,10 @@ class YoloProcessor(Node):
         super().__init__('yolo_processor')
         
         # YOLO Modell laden
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = YOLO('yolov8n.pt')
-        self.get_logger().info('YOLO Modell geladen')
+        self.model.to(self.device)
+        self.get_logger().info(f'YOLO Modell geladen (Device: {self.device})')
         
         # CV Bridge für ROS-OpenCV Konvertierung
         self.bridge = CvBridge()
@@ -64,7 +67,8 @@ class YoloProcessor(Node):
                 cv_image, 
                 conf=0.5, 
                 persist=True,  # Keep tracking across frames
-                verbose=False
+                verbose=False,
+                device=self.device
             )
             
             # 3. 📋 Detections erstellen

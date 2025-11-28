@@ -35,5 +35,5 @@ COMMANDS_AFTER_WAKE = {
 }
 
 GRAMMAR = list({
-    "snoopy", "sitz", "platz", "beifuß", "bei fuß"
+    "snoopy", "sitz", "platz", "beifuß", "bei fuß", "auf"
     })
