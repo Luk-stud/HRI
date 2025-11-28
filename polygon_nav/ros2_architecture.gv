@@ -29,7 +29,9 @@ digraph ROS2_Architecture {
     subgraph cluster_control {
         label="Control Nodes";
         style=dashed;
+        follower_control [label="follower_control\nFollowerControlSkill\n/cmd_vel publisher", style=filled, fillcolor=lightcoral];
         pose_control [label="pose_control\nPoseControlSkill\nDesiredPose publisher", style=filled, fillcolor=lightcoral];
+        follower_control -> pose_control [style=invis, weight=10];
     }
     
     /* Navigation client removed (polygon_navigation_client deprecated) */
@@ -45,54 +47,53 @@ digraph ROS2_Architecture {
     voice_commands [label="/voice_commands\n(std_msgs/String)", shape=ellipse];
     /* robot_behavior_state removed - pose_control subscribes to state_machine_out now */
     desired_pose [label="/desired_pose\n(go1_legged_msgs/DesiredPose)", shape=ellipse];
+    target_person [label="/human_tracker/target_person\n(geometry_msgs/PointStamped)", shape=ellipse];
+    cmd_vel [label="/cmd_vel\n(geometry_msgs/Twist)", shape=ellipse];
     /* person_position and nav_action topics removed (tracking & nav client deprecated) */
     
-    // Input connections
-    image_input -> yolo_node [label="SUBSCRIBE"];
-    image_input -> hand_node [label="SUBSCRIBE"];
-    
-    /* odom/scan -> person_tracker removed (person_position_tracker deprecated) */
-    
-    // YOLO Node connections
-    yolo_node -> yolo_detections [label="PUBLISH"];
-    yolo_node -> yolo_image [label="PUBLISH"];
-    
-    // Hand Node connections
-    hand_node -> hand_finger [label="PUBLISH"];
-    hand_node -> hand_thumbs_up [label="PUBLISH"];
-    hand_node -> hand_image [label="PUBLISH"];
-
     // Microphone node (speech -> voice commands)
     subgraph cluster_audio {
         label="Audio / Speech";
         style=dashed;
         mic_node [label="vosk_mic_node\nVosk Microphone\nSpeech->voice_commands", style=filled, fillcolor=lightgreen];
     }
-    mic_node -> voice_commands [label="PUBLISH"];
+
+    /* odom/scan -> person_tracker removed (person_position_tracker deprecated) */
+
+    // Subscription edges (topics ➜ nodes)
+    edge [color=dodgerblue, arrowsize=1.05];
+    image_input -> yolo_node [label="SUBSCRIBE"];
+    image_input -> hand_node [label="SUBSCRIBE"];
     voice_commands -> sensor_fusion [label="SUBSCRIBE"];
-    
-    // Sensor Fusion connections
     yolo_detections -> sensor_fusion [label="SUBSCRIBE"];
     yolo_image -> sensor_fusion [label="SUBSCRIBE"];
     hand_finger -> sensor_fusion [label="SUBSCRIBE"];
     hand_thumbs_up -> sensor_fusion [label="SUBSCRIBE"];
     hand_image -> sensor_fusion [label="SUBSCRIBE"];
-    sensor_fusion -> fusion_out [label="PUBLISH"];
-    
-    // State Machine connections
     fusion_out -> state_machine [label="SUBSCRIBE"];
-    state_machine -> state_machine_out [label="PUBLISH"];
-    
-    // pose_control connections (listens to state_machine_out, publishes desired_pose)
     state_machine_out -> pose_control [label="SUBSCRIBE"];
+    state_machine_out -> follower_control [label="SUBSCRIBE"];
+    target_person -> follower_control [label="SUBSCRIBE"];
+    
+    // Publication edges (nodes ➜ topics)
+    edge [color=forestgreen, arrowsize=1.05];
+    yolo_node -> yolo_detections [label="PUBLISH"];
+    yolo_node -> yolo_image [label="PUBLISH"];
+    hand_node -> hand_finger [label="PUBLISH"];
+    hand_node -> hand_thumbs_up [label="PUBLISH"];
+    hand_node -> hand_image [label="PUBLISH"];
+    mic_node -> voice_commands [label="PUBLISH"];
+    sensor_fusion -> fusion_out [label="PUBLISH"];
+    sensor_fusion -> target_person [label="PUBLISH"];
+    state_machine -> state_machine_out [label="PUBLISH"];
     pose_control -> desired_pose [label="PUBLISH\n(go1_legged_msgs/DesiredPose)"];
+    follower_control -> cmd_vel [label="PUBLISH"];
+    
+    { rank=same; target_person; follower_control; }
     
     // Follow node removed — velocity control handled elsewhere (nav client / other controllers)
     
     // Person tracker removed — person position published by other components if needed
     
     // Navigation client removed
-    
-    // Styling
-    edge [color=blue];
 }
