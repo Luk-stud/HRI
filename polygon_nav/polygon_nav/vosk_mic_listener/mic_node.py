@@ -1,4 +1,5 @@
 import json
+import time
 
 import rclpy
 from rclpy.node import Node
@@ -23,6 +24,8 @@ class VoskMicNode(Node):
         super().__init__("vosk_mic_node")
 
         self.awaiting_command = False
+        self.wake_word_time = None
+        self.command_timeout = 5.0
         self.declare_parameter("model_path", MODEL_PATH)
         self.declare_parameter("sample_rate", SAMPLE_RATE)
         self.declare_parameter("grammar", GRAMMAR)
@@ -117,19 +120,49 @@ class VoskMicNode(Node):
             self.log_pub.publish(partial_msg)
 
     def handle_text(self, text: str):
-        # Check for wake word
-        if any(w in text for w in WAKE_WORDS):
-            self.awaiting_command = True
-            self.get_logger().info(f"Wake word detected in: '{text}'")
-            return
-
+        # Check if awaiting command and validate timeout
         if self.awaiting_command:
+            # Check if timeout exceeded
+            if time.time() - self.wake_word_time > self.command_timeout:
+                self.get_logger().info(f"Command timeout exceeded")
+                self.awaiting_command = False
+            else:
+                # Search for command
+                for cmd_phrase, info in COMMANDS_AFTER_WAKE.items():
+                    if cmd_phrase in text:
+                        publish_value = info.get("publish", cmd_phrase)
+                        log_msg = info.get("log", f"Command: {cmd_phrase}")
+
+                        self.get_logger().info(f"Command sequence detected: '{cmd_phrase}'")
+                        self.get_logger().info(log_msg)
+                        msg = RosString()
+                        msg.data = publish_value
+                        self.command_pub.publish(msg)
+
+                        self.awaiting_command = False
+                        return
+
+        # Check for wake word
+        wake_word_found = False
+        for wake_word in WAKE_WORDS:
+            if wake_word in text:
+                wake_word_found = True
+                self.awaiting_command = True
+                self.wake_word_time = time.time()
+                self.get_logger().info(f"Wake word '{wake_word}' detected in: '{text}'")
+                break
+
+        # If wake word and command in same text, extract and execute command
+        if wake_word_found:
+            for wake_word in WAKE_WORDS:
+                text_without_wake = text.replace(wake_word, "").strip()
+            
             for cmd_phrase, info in COMMANDS_AFTER_WAKE.items():
-                if cmd_phrase in text:
+                if cmd_phrase in text_without_wake:
                     publish_value = info.get("publish", cmd_phrase)
                     log_msg = info.get("log", f"Command: {cmd_phrase}")
 
-                    self.get_logger().info(f"Command sequence detected: '{cmd_phrase}'")
+                    self.get_logger().info(f"Command detected in same sample: '{cmd_phrase}'")
                     self.get_logger().info(log_msg)
                     msg = RosString()
                     msg.data = publish_value
@@ -137,11 +170,6 @@ class VoskMicNode(Node):
 
                     self.awaiting_command = False
                     return
-
-            self.get_logger().info(f"Unknown command after wake word: '{text}'")
-            self.awaiting_command = False
-        else:
-            self.get_logger().info(f"Ignoring text without wake word: '{text}'")
 
     def destroy_node(self):
         try:
