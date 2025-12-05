@@ -25,7 +25,7 @@ class VoskMicNode(Node):
 
         self.awaiting_command = False
         self.wake_word_time = None
-        self.command_timeout = 5.0
+        self.command_timeout = 10.0
         self.declare_parameter("model_path", MODEL_PATH)
         self.declare_parameter("sample_rate", SAMPLE_RATE)
         self.declare_parameter("grammar", GRAMMAR)

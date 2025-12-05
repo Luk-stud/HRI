@@ -54,8 +54,8 @@ echo "▶ Starting: ros2 run polygon_nav state_machine"
 ros2 run polygon_nav state_machine &
 
 # start the vosk voice assistant at the end
-echo "▶ Starting: ros2 run polygon_nav vosk_voice_assistant"
-ros2 run polygon_nav vosk_voice_assistant &
+#echo "▶ Starting: ros2 run polygon_nav vosk_voice_assistant"
+#ros2 run polygon_nav vosk_voice_assistant &
 
 echo ""
 echo "✅ All nodes started"

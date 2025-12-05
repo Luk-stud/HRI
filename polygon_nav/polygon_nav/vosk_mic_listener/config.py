@@ -6,6 +6,11 @@ DEVICE_PREFERRED_NAME = "Samson Q2U Microphone"
 
 WAKE_WORDS = [
     "snoopy",
+    'thomas',
+    'mirko',
+    'wolfgang',
+    'hansi',
+    'hansjörg',
 ]
 
 # Commands that are valid after a wake word

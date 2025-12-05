@@ -15,11 +15,14 @@ class YoloProcessor(Node):
     def __init__(self):
         super().__init__('yolo_processor')
         
+        # Parameters
+        self.input_size = int(self.declare_parameter('input_size', 480).value)
+
         # YOLO Modell laden
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = YOLO('yolov8n.pt')
         self.model.to(self.device)
-        self.get_logger().info(f'YOLO Modell geladen (Device: {self.device})')
+        self.get_logger().info(f'YOLO Modell geladen (Device: {self.device}, imgsz={self.input_size})')
         
         # CV Bridge für ROS-OpenCV Konvertierung
         self.bridge = CvBridge()
@@ -68,7 +71,8 @@ class YoloProcessor(Node):
                 conf=0.5, 
                 persist=True,  # Keep tracking across frames
                 verbose=False,
-                device=self.device
+                device=self.device,
+                imgsz=self.input_size
             )
             
             # 3. 📋 Detections erstellen
