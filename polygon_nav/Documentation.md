@@ -38,7 +38,11 @@ Der yolo_processor Node empfängt den Kamerafeed und führt darauf YOLOv8-Infere
 
 ### Folgemechanismus (follower_control.py)
 
-Follower_control wandelt den vom Sensor Fusion gelieferten Zielpersonen-Stream in konkrete Bewegungsbefehle um. Der Node subscribed auf `/state_machine_out` und aktiviert sich nur, wenn der Zustand FOLLOW aktiv ist. Über `/human_tracker/target_person` erhält er die Pixelposition der Zielperson sowie die Boxhöhe als Distanzmaß. Aus der horizontalen Abweichung zur Bildmitte leitet er eine gewünschte Drehgeschwindigkeit ab, während die Boxhöhe genutzt wird, um näher heranzufahren oder Abstand zu gewinnen. Die Regelung erfolgt bewusst simpel mittels zweier Proportionalglieder (für Winkel und Distanz), deren Ausgaben hart auf definierte Maximalgeschwindigkeiten begrenzt werden. Sobald neue Werte vorliegen, veröffentlicht der Node ein `geometry_msgs/Twist` auf `/cmd_vel`, das direkt vom Unitree-Motion-Stack verarbeitet wird. Parametrische Kp-Werte und Geschwindigkeitsgrenzen erlauben es, das System bei Bedarf an unterschiedliche Kamera-Setups oder Laufgeschwindigkeiten anzupassen. Wird FOLLOW deaktiviert, sendet der Node automatisch eine Nullgeschwindigkeit, sodass der Roboter sofort stoppt.
+Follower_control wandelt den vom Sensor Fusion gelieferten Zielpersonen-Stream in konkrete Bewegungsbefehle um. Der Node subscribed auf `/state_machine_out` und schaltet sich ausschließlich im Zustand FOLLOW frei. Über `/human_tracker/target_person` erhält er die Pixelposition der Zielperson sowie die Boxhöhe als Distanzmaß. Aus der horizontalen Abweichung zur Bildmitte leitet er eine gewünschte Drehgeschwindigkeit ab, während die Boxhöhe genutzt wird, um den Abstand zur Person zu regeln. Sobald neue Werte vorliegen, veröffentlicht der Node ein `geometry_msgs/Twist` auf `/cmd_vel`, das direkt vom Unitree-Motion-Stack verarbeitet wird; bei deaktiviertem FOLLOW-Signal wird sofort eine Nullgeschwindigkeit ausgesendet.
+
+Unter der Haube arbeiten zwei PID-Regler für den linearen und den angularen Kanal. Die Gains (`kp_*`, `ki_*`, `kd_*`) sowie Grenzwerte wie `max_linear_speed` oder `desired_box_height` sind als ROS-Parameter deklarierbar und damit im Feld feinjustierbar. Der lineare Regler ist bewusst nur nach vorne freigegeben (0 bis `max_linear_speed`), damit der Go1 nicht rückwärts läuft, während der Drehregler symmetrisch auf ±`max_angular_speed` begrenzt ist. Beide PID-Instanzen besitzen Anti-Windup durch Integralsättigung und werden bei jedem State-Wechsel oder Target-Verlust über `reset_controllers()` zurückgesetzt.
+
+Ein zusätzlicher Watchdog (`target_timeout`) überwacht, ob Sensor Fusion weiterhin Zielupdates liefert. Bleibt ein Update länger als die konfigurierte Frist aus, stoppt follower_control den Roboter, setzt beide Regler zurück und wartet, bis Sensor Fusion eine neue Bounding-Box-ID gemeldet hat. Auf diese Weise entstehen keine Nachzüglerbewegungen aus alten Messwerten und das System verhält sich transparent gegenüber Operator:innen.
 
 ### Sensor Fusion (sensor_fusion.py)
 
@@ -48,10 +52,9 @@ Ein Daumen-hoch-Geste, ebenfalls über mehrere Sekunden gehalten, löst das Komm
 
 ### Spracherkennung (vosk_mic_listener)
 
+Der `vosk_mic_listener` bildet die Audiofront des Systems. Er durchsucht beim Start alle verfügbaren Mikrofone, bevorzugt anhand des in `config.py` hinterlegten Namens das Samson-Q2U-USB-Mikro und fällt ansonsten auf das erste aufnahmetaugliche Gerät zurück. Danach lädt er ein lokales Vosk-Sprachmodell; Grammatik, Samplerate und Modellpfad lassen sich über ROS-Parameter überschreiben. Die ankommenden Samples werden mit PyAudio aufgenommen, durch den KaldiRecognizer geschickt und sowohl als finale Transkripte als auch als fortlaufende Partial-Strings auf `/voice_commands_log` veröffentlicht, damit Fehlinterpretationen nachvollziehbar bleiben.
 
-
-
-
+Der Node kennt mehrere Wake-Words (z.B. „Snoopy“, „Thomas“). Sobald eines davon erkannt wird, aktiviert er ein 10-Sekunden-Zeitfenster (`awaiting_command`). Innerhalb dieser Frist sucht er nach den in `COMMANDS_AFTER_WAKE` definierten Phrasen und publiziert – falls nötig noch im selben Audio-Sample – das zugehörige Normalisierungs-Token (z.B. `dog_up`, `dog_sit`) als `std_msgs/String` auf `/voice_commands`. Erfolgt kein gültiger Befehl, läuft das Fenster aus und der Listener wartet erneut auf ein Wake-Word. Diese Architektur sorgt dafür, dass Sprachkommandos deterministisch und priorisiert bei Sensor Fusion ankommen, ohne das System permanent mit frei gesprochenem Text zu fluten.
 
 ### Disclaimer
 - pose_control und follower_control konnten zum Teil aus einem  
