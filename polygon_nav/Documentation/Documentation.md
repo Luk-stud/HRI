@@ -57,6 +57,4 @@ Der `vosk_mic_listener` bildet die Audiofront des Systems. Er durchsucht beim St
 Der Node kennt mehrere Wake-Words (z.B. „Snoopy“, „Thomas“). Sobald eines davon erkannt wird, aktiviert er ein 10-Sekunden-Zeitfenster (`awaiting_command`). Innerhalb dieser Frist sucht er nach den in `COMMANDS_AFTER_WAKE` definierten Phrasen und publiziert – falls nötig noch im selben Audio-Sample – das zugehörige Normalisierungs-Token (z.B. `dog_up`, `dog_sit`) als `std_msgs/String` auf `/voice_commands`. Erfolgt kein gültiger Befehl, läuft das Fenster aus und der Listener wartet erneut auf ein Wake-Word. Diese Architektur sorgt dafür, dass Sprachkommandos deterministisch und priorisiert bei Sensor Fusion ankommen, ohne das System permanent mit frei gesprochenem Text zu fluten.
 
 ### Disclaimer
-- pose_control und follower_control konnten zum Teil aus einem  
-- pose_control
-- follower_control
+- Externe Lösungen: pose_control.py 
