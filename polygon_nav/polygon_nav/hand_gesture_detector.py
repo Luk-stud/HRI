@@ -9,7 +9,6 @@ from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge
 import cv2
 import mediapipe as mp
-import numpy as np
 import math
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
@@ -169,130 +168,164 @@ class HandGestureDetector(Node):
     def image_callback(self, msg):
         """Verarbeitet eingehende Bilder"""
         try:
-            # ROS Image → OpenCV
-            cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+            cv_image, processed_image, annotated_image = self._prepare_image(msg)
+            results = self.hands.process(processed_image)
 
-            # Optional downscale for faster processing
-            orig_h, orig_w = cv_image.shape[:2]
-            proc_image = cv_image
-            if self.processing_width > 0 and orig_w > self.processing_width:
-                scale = self.processing_width / float(orig_w)
-                target_size = (self.processing_width, max(1, int(orig_h * scale)))
-                proc_image = cv2.resize(cv_image, target_size, interpolation=cv2.INTER_LINEAR)
-            else:
-                scale = 1.0
+            (
+                finger_detected,
+                finger_position,
+                thumbs_up_detected,
+                thumbs_up_position,
+                annotated_image,
+            ) = self._analyze_landmarks(results, cv_image, annotated_image)
 
-            # Convert BGR to RGB für MediaPipe
-            rgb_image = cv2.cvtColor(proc_image, cv2.COLOR_BGR2RGB)
-            
-            # Process with MediaPipe
-            results = self.hands.process(rgb_image)
-            
-            # Zeichne Resultate auf Bild
-            annotated_image = cv_image.copy()
-            
-            finger_detected = False
-            finger_position = None
-            thumbs_up_detected = False
-            thumbs_up_position = None
-            
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    # Zeichne Hand-Skeleton
-                    self.mp_draw.draw_landmarks(
-                        annotated_image,
-                        hand_landmarks,
-                        self.mp_hands.HAND_CONNECTIONS,
-                        self.mp_draw.DrawingSpec(color=(0, 255, 0), thickness=2),
-                        self.mp_draw.DrawingSpec(color=(255, 0, 0), thickness=2)
-                    )
-                    
-                    # Überprüfe Zeigefinger und Thumbs Up
-                    landmarks = hand_landmarks.landmark
-                    hand_scale = self.estimate_hand_scale(landmarks)
-                    is_up, index_tip = self.is_index_finger_up(landmarks, hand_scale)
-                    thumbs_up, thumb_tip = self.is_thumbs_up(landmarks, hand_scale)
-                    
-                    # Get image dimensions
-                    h, w = cv_image.shape[:2]
-                    
-                    if is_up:
-                        # Convert normalized coordinates to pixel coordinates
-                        self.finger_candidate = (
-                            int(index_tip.x * w),
-                            int(index_tip.y * h),
-                            index_tip.z
-                        )
-                        self.finger_detect_counter += 1
-                    else:
-                        self.finger_detect_counter = 0
-                        self.finger_candidate = None
-
-                    if self.finger_detect_counter >= self.min_detection_frames and self.finger_candidate:
-                        finger_detected = True
-                        finger_position = self.finger_candidate
-                        
-                        # Zeichne Zeigefinger-Tip
-                        cv2.circle(annotated_image, (finger_position[0], finger_position[1]), 10, (0, 255, 255), -1)
-                        
-                        self.get_logger().info(
-                            f'👆 Zeigefinger erkannt: x={finger_position[0]}, y={finger_position[1]}'
-                        )
-                    
-                    if thumbs_up:
-                        # Convert normalized coordinates to pixel coordinates
-                        self.thumb_candidate = (
-                            int(thumb_tip.x * w),
-                            int(thumb_tip.y * h),
-                            thumb_tip.z
-                        )
-                        self.thumb_detect_counter += 1
-                    else:
-                        self.thumb_detect_counter = 0
-                        self.thumb_candidate = None
-
-                    if self.thumb_detect_counter >= self.min_detection_frames and self.thumb_candidate:
-                        thumbs_up_detected = True
-                        thumbs_up_position = self.thumb_candidate
-                        
-                        # Zeichne Thumbs Up
-                        cv2.circle(annotated_image, (thumbs_up_position[0], thumbs_up_position[1]), 15, (255, 255, 0), -1)
-                        
-                        self.get_logger().info(
-                            f'👍 Thumbs Up erkannt: x={thumbs_up_position[0]}, y={thumbs_up_position[1]}'
-                        )
-            
-            # Publish finger position if detected
-            if finger_detected and finger_position:
-                point_msg = PointStamped()
-                point_msg.header.stamp = msg.header.stamp
-                point_msg.header.frame_id = msg.header.frame_id
-                point_msg.point.x = float(finger_position[0])
-                point_msg.point.y = float(finger_position[1])
-                point_msg.point.z = float(finger_position[2])  # Tiefe
-                
-                self.finger_pub.publish(point_msg)
-            
-            # Publish thumbs up position if detected
-            if thumbs_up_detected and thumbs_up_position:
-                point_msg = PointStamped()
-                point_msg.header.stamp = msg.header.stamp
-                point_msg.header.frame_id = msg.header.frame_id
-                point_msg.point.x = float(thumbs_up_position[0])
-                point_msg.point.y = float(thumbs_up_position[1])
-                point_msg.point.z = float(thumbs_up_position[2])  # Tiefe
-                
-                self.thumbs_up_pub.publish(point_msg)
-            
-            if self.publish_annotated:
-                self.annotation_counter = (self.annotation_counter + 1) % self.annotation_decimation
-                if self.annotation_counter == 0:
-                    annotated_msg = self.bridge.cv2_to_imgmsg(annotated_image, 'bgr8')
-                    annotated_msg.header = msg.header
-                    self.image_pub.publish(annotated_msg)
-            
+            self._publish_gesture_points(
+                msg,
+                finger_detected,
+                finger_position,
+                thumbs_up_detected,
+                thumbs_up_position,
+            )
+            self._publish_annotated_image(msg, annotated_image)
         except Exception as e:
             self.get_logger().error(f'Fehler bei Bildverarbeitung: {e}')
+
+    def _prepare_image(self, msg):
+        """Convert ROS image to BGR, optionally downscale, and prepare RGB copy."""
+        cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+        orig_h, orig_w = cv_image.shape[:2]
+        processed_image = cv_image
+        if self.processing_width > 0 and orig_w > self.processing_width:
+            scale = self.processing_width / float(orig_w)
+            target_size = (self.processing_width, max(1, int(orig_h * scale)))
+            processed_image = cv2.resize(cv_image, target_size, interpolation=cv2.INTER_LINEAR)
+        processed_image = cv2.cvtColor(processed_image, cv2.COLOR_BGR2RGB)
+        annotated_image = cv_image.copy()
+        return cv_image, processed_image, annotated_image
+
+    def _analyze_landmarks(self, results, cv_image, annotated_image):
+        """Evaluate all detected hands and return gesture flags plus annotated frame."""
+        finger_detected = False
+        finger_position = None
+        thumbs_up_detected = False
+        thumbs_up_position = None
+
+        if results.multi_hand_landmarks:
+            h, w = cv_image.shape[:2]
+            for hand_landmarks in results.multi_hand_landmarks:
+                self._draw_hand(annotated_image, hand_landmarks)
+                landmarks = hand_landmarks.landmark
+                hand_scale = self.estimate_hand_scale(landmarks)
+                detected, position = self._update_finger_detection(
+                    landmarks, hand_scale, h, w, annotated_image
+                )
+                if detected:
+                    finger_detected = True
+                    finger_position = position
+                detected, position = self._update_thumb_detection(
+                    landmarks, hand_scale, h, w, annotated_image
+                )
+                if detected:
+                    thumbs_up_detected = True
+                    thumbs_up_position = position
+
+        return finger_detected, finger_position, thumbs_up_detected, thumbs_up_position, annotated_image
+
+    def _draw_hand(self, annotated_image, hand_landmarks):
+        """Render a MediaPipe hand skeleton onto the annotated image."""
+        self.mp_draw.draw_landmarks(
+            annotated_image,
+            hand_landmarks,
+            self.mp_hands.HAND_CONNECTIONS,
+            self.mp_draw.DrawingSpec(color=(0, 255, 0), thickness=2),
+            self.mp_draw.DrawingSpec(color=(255, 0, 0), thickness=2)
+        )
+
+    def _update_finger_detection(self, landmarks, hand_scale, image_height, image_width, annotated_image):
+        """Update index-finger detection counters and draw/return the point if stable."""
+        is_up, index_tip = self.is_index_finger_up(landmarks, hand_scale)
+        if is_up:
+            self.finger_candidate = (
+                int(index_tip.x * image_width),
+                int(index_tip.y * image_height),
+                index_tip.z,
+            )
+            self.finger_detect_counter += 1
+        else:
+            self.finger_detect_counter = 0
+            self.finger_candidate = None
+        if self.finger_detect_counter >= self.min_detection_frames and self.finger_candidate:
+            finger_position = self.finger_candidate
+            cv2.circle(
+                annotated_image,
+                (finger_position[0], finger_position[1]),
+                10,
+                (0, 255, 255),
+                -1,
+            )
+            self.get_logger().info(
+                f'👆 Zeigefinger erkannt: x={finger_position[0]}, y={finger_position[1]}'
+            )
+            return True, finger_position
+        return False, None
+
+    def _update_thumb_detection(self, landmarks, hand_scale, image_height, image_width, annotated_image):
+        """Update thumbs-up detection counters and draw/return the point if stable."""
+        thumbs_up, thumb_tip = self.is_thumbs_up(landmarks, hand_scale)
+        if thumbs_up:
+            self.thumb_candidate = (
+                int(thumb_tip.x * image_width),
+                int(thumb_tip.y * image_height),
+                thumb_tip.z,
+            )
+            self.thumb_detect_counter += 1
+        else:
+            self.thumb_detect_counter = 0
+            self.thumb_candidate = None
+        if self.thumb_detect_counter >= self.min_detection_frames and self.thumb_candidate:
+            thumb_position = self.thumb_candidate
+            cv2.circle(
+                annotated_image,
+                (thumb_position[0], thumb_position[1]),
+                15,
+                (255, 255, 0),
+                -1,
+            )
+            self.get_logger().info(
+                f'👍 Thumbs Up erkannt: x={thumb_position[0]}, y={thumb_position[1]}'
+            )
+            return True, thumb_position
+        return False, None
+
+    def _publish_gesture_points(self, msg, finger_detected, finger_position, thumbs_up_detected, thumbs_up_position):
+        """Publish PointStamped messages for the detected finger/thumb gestures."""
+        if finger_detected and finger_position:
+            point_msg = PointStamped()
+            point_msg.header.stamp = msg.header.stamp
+            point_msg.header.frame_id = msg.header.frame_id
+            point_msg.point.x = float(finger_position[0])
+            point_msg.point.y = float(finger_position[1])
+            point_msg.point.z = float(finger_position[2])
+            self.finger_pub.publish(point_msg)
+
+        if thumbs_up_detected and thumbs_up_position:
+            point_msg = PointStamped()
+            point_msg.header.stamp = msg.header.stamp
+            point_msg.header.frame_id = msg.header.frame_id
+            point_msg.point.x = float(thumbs_up_position[0])
+            point_msg.point.y = float(thumbs_up_position[1])
+            point_msg.point.z = float(thumbs_up_position[2])
+            self.thumbs_up_pub.publish(point_msg)
+
+    def _publish_annotated_image(self, msg, annotated_image):
+        """Publish the annotated debug image according to the decimation setting."""
+        if not self.publish_annotated:
+            return
+        self.annotation_counter = (self.annotation_counter + 1) % self.annotation_decimation
+        if self.annotation_counter == 0:
+            annotated_msg = self.bridge.cv2_to_imgmsg(annotated_image, 'bgr8')
+            annotated_msg.header = msg.header
+            self.image_pub.publish(annotated_msg)
 
 def main(args=None):
     rclpy.init(args=args)
