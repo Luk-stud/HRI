@@ -1,4 +1,7 @@
 # Dokumentation Go1 Gruppe
+- Code ist public unter https://github.com/Luk-stud/HRI als public repository abrufbar.
+- Nodes liegen in polygon_nav/polygon_nav (Unintuitive Ordnernamen wurden so belassen, da das ROS-Setup direkt aus dem Modul AIRWEEK übernommen worden ist)
+
 
 ## Architektur
 ![ROS2 Architektur](ros2_architecture.png)
@@ -58,3 +61,4 @@ Der Node kennt mehrere Wake-Words (z.B. „Snoopy“, „Thomas“). Sobald eine
 
 ### Disclaimer
 - Externe Lösungen: pose_control.py 
+- Die Positionen der IDLE Schlaufe und die expliziten Positionen für den Sitz und Aufstehmechanismus wurde aus einem Projekt aus dem Modul AIRCH übernommen.
